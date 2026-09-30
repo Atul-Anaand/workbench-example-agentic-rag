@@ -21,7 +21,8 @@ from langchain_community.document_loaders import (
     CSVLoader 
 )
 from langchain_community.vectorstores import Chroma
-from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+import json
+import urllib.request
 
 from typing import Any, Dict, List, Tuple, Union
 from urllib.parse import urlparse
@@ -32,30 +33,78 @@ import time
 
 
 
-# Handling which API to use based on public vs NVIDIA internal
-# Check if the INTERNAL_API environment variable is set to yes. Don't set if not NVIDIA employee, as you can't access them.
-INTERNAL_API = os.getenv('INTERNAL_API', 'no')
+# Local Ollama embedding configuration
+EMBEDDINGS_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
+OLLAMA_EMBED_URL = os.getenv(
+    "OLLAMA_EMBED_URL",
+    "http://host.docker.internal:11434/api/embed",
+)
 
-# Default model for public embedding
-EMBEDDINGS_MODEL = 'nvidia/llama-nemotron-embed-1b-v2'
+print(f"[config] Using local Ollama embedding model: {EMBEDDINGS_MODEL}")
+print(f"[config] Ollama embedding endpoint: {OLLAMA_EMBED_URL}")
 
-# Set the chunk size and overlap for the text splitter. Uses defaults but allows them to be set as environment variables.
+
+class OllamaEmbeddings:
+    """Minimal embedding adapter for Ollama."""
+
+    def __init__(self, model=EMBEDDINGS_MODEL, url=OLLAMA_EMBED_URL):
+        self.model = model
+        self.url = url
+
+    def _embed(self, inputs):
+        # Ollama supports batched embedding requests. Keep batches bounded to
+        # avoid oversized/bulk-request failures during large RAG ingestions.
+        batch_size = 32
+        all_embeddings = []
+
+        for start in range(0, len(inputs), batch_size):
+            batch = inputs[start:start + batch_size]
+
+            payload = {
+                "model": self.model,
+                "input": batch,
+            }
+
+            request = urllib.request.Request(
+                self.url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            try:
+                with urllib.request.urlopen(request, timeout=120) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+            except Exception as e:
+                raise RuntimeError(
+                    f"Ollama embedding request failed for batch "
+                    f"{start + 1}-{start + len(batch)}: {e}"
+                ) from e
+
+            embeddings = result.get("embeddings")
+            if not embeddings:
+                raise RuntimeError(
+                    f"Ollama embedding response missing embeddings "
+                    f"for batch {start + 1}-{start + len(batch)}: {result}"
+                )
+
+            all_embeddings.extend(embeddings)
+
+        return all_embeddings
+
+    def embed_documents(self, texts):
+        return self._embed(list(texts))
+
+    def embed_query(self, text):
+        return self._embed([text])[0]
+
+
+# Set the chunk size and overlap for the text splitter.
 DEFAULT_CHUNK_SIZE = 250
 DEFAULT_CHUNK_OVERLAP = 0
 
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", DEFAULT_CHUNK_SIZE))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", DEFAULT_CHUNK_OVERLAP))
-
-
-if INTERNAL_API == 'yes':
-    # NVIDIA employees can use internal endpoints
-    EMBEDDINGS_MODEL = 'nvdev/nvidia/llama-nemotron-embed-1b-v2'
-    print("[config] INTERNAL_API detected.")
-    print(f"[config] Using internal embedding model: {EMBEDDINGS_MODEL}")
-
-else:
-    print("[config] No INTERNAL_API set.")
-    print(f"[config] Using public embedding model: {EMBEDDINGS_MODEL}")
 
 
 # Adding nltk data
@@ -190,7 +239,7 @@ def embed_documents(doc_splits: List[Any]):
         vectorstore = Chroma.from_documents(
             documents=doc_splits,
             collection_name="rag-chroma",
-            embedding=NVIDIAEmbeddings(model=EMBEDDINGS_MODEL),
+            embedding=OllamaEmbeddings(model=EMBEDDINGS_MODEL),
             persist_directory="/project/data",
         )
         print(f"[Documents] ✓ Context ready — {len(doc_splits)} chunks stored in the vector database ({time.time() - start:.1f}s)")
@@ -241,7 +290,7 @@ def _clear(
         # Clear the collection via Chroma client
         vectorstore = Chroma(
             collection_name=collection_name,
-            embedding_function=NVIDIAEmbeddings(model=EMBEDDINGS_MODEL),
+            embedding_function=OllamaEmbeddings(model=EMBEDDINGS_MODEL),
             persist_directory=persist_directory,
         )
         vectorstore._client.delete_collection(name=collection_name)
@@ -277,7 +326,7 @@ def _clear(
 #     """ This is a helper function for emptying the collection the vector store. """
 #     vectorstore = Chroma(
 #         collection_name="rag-chroma",
-#         embedding_function=NVIDIAEmbeddings(model=EMBEDDINGS_MODEL),
+#         embedding_function=OllamaEmbeddings(model=EMBEDDINGS_MODEL),
 #         persist_directory="/project/data",
 #     )
     
@@ -288,7 +337,7 @@ def get_retriever():
     """ This is a helper function for returning the retriever object of the vector store. """
     vectorstore = Chroma(
         collection_name="rag-chroma",
-        embedding_function=NVIDIAEmbeddings(model=EMBEDDINGS_MODEL),
+        embedding_function=OllamaEmbeddings(model=EMBEDDINGS_MODEL),
         persist_directory="/project/data",
     )
     retriever = vectorstore.as_retriever()
