@@ -48,6 +48,15 @@ DEFAULT_RECURSION_LIMIT = 10
 RECURSION_LIMIT = int(os.getenv("RECURSION_LIMIT", DEFAULT_RECURSION_LIMIT))
 
 
+# Local Ollama inference configuration.
+LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "true").lower() in {
+    "1", "true", "yes", "on"
+}
+LOCAL_LLM_HOST = os.getenv("LOCAL_LLM_HOST", "host.docker.internal")
+LOCAL_LLM_PORT = os.getenv("LOCAL_LLM_PORT", "11434")
+LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "deepseek-r1:32b")
+
+
 # Model identifiers with prefix
 NANO = "nvidia/nemotron-3-nano-30b-a3b"
 SUPER = "nvidia/nemotron-3-super-120b-a12b"
@@ -211,11 +220,11 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
         """ Keep state of which queries need to use NIMs vs API Endpoints. """
         
-        router_use_nim = gr.State(True)
-        retrieval_use_nim = gr.State(True)
-        generator_use_nim = gr.State(True)
-        hallucination_use_nim = gr.State(True)
-        answer_use_nim = gr.State(True)
+        router_use_nim = gr.State(LOCAL_LLM_ENABLED)
+        retrieval_use_nim = gr.State(LOCAL_LLM_ENABLED)
+        generator_use_nim = gr.State(LOCAL_LLM_ENABLED)
+        hallucination_use_nim = gr.State(LOCAL_LLM_ENABLED)
+        answer_use_nim = gr.State(LOCAL_LLM_ENABLED)
 
         """ Build the Chat Application. """
         
@@ -376,14 +385,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         
                                         with gr.Row():
                                             nim_router_ip = gr.Textbox(
-                                                value = "host.docker.internal",
+                                                value = LOCAL_LLM_HOST,
                                                 label=HOST_NAME,
                                                 info="Local microservice OR IP address running a remote microservice",
                                                 elem_id="rag-inputs",
                                                 scale=2
                                             )
                                             nim_router_port = gr.Textbox(
-                                                value = "11434",
+                                                value = LOCAL_LLM_PORT,
                                                 placeholder="8000",
                                                 label=HOST_PORT,
                                                 info="Optional, (default: 8000)",
@@ -391,7 +400,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 scale=1
                                             )
                                         nim_router_id = gr.Textbox(
-                                            value = "deepseek-r1:32b",
+                                            value = LOCAL_LLM_MODEL,
                                              placeholder = "meta/llama-3.1-8b-instruct",
                                             label=HOST_MODEL,
                                             info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
@@ -453,14 +462,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         
                                         with gr.Row():
                                             nim_retrieval_ip = gr.Textbox(
-                                                value = "host.docker.internal",
+                                                value = LOCAL_LLM_HOST,
                                                 label=HOST_NAME,
                                                 info="Local microservice OR IP address running a remote microservice",
                                                 elem_id="rag-inputs",
                                                 scale=2
                                             )
                                             nim_retrieval_port = gr.Textbox(
-                                                value = "11434",
+                                                value = LOCAL_LLM_PORT,
                                                 placeholder="8000",
                                                 label=HOST_PORT,
                                                 info="Optional, (default: 8000)",
@@ -468,7 +477,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 scale=1
                                             )
                                         nim_retrieval_id = gr.Textbox(
-                                            value = "deepseek-r1:32b",
+                                            value = LOCAL_LLM_MODEL,
                                              placeholder = "meta/llama-3.1-8b-instruct",
                                             label=HOST_MODEL,
                                             info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
@@ -529,14 +538,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         
                                         with gr.Row():
                                             nim_generator_ip = gr.Textbox(
-                                                value = "host.docker.internal",
+                                                value = LOCAL_LLM_HOST,
                                                 label=HOST_NAME,
                                                 info="Local microservice OR IP address running a remote microservice",
                                                 elem_id="rag-inputs",
                                                 scale=2
                                             )
                                             nim_generator_port = gr.Textbox(
-                                                value = "11434",
+                                                value = LOCAL_LLM_PORT,
                                                 placeholder="8000",
                                                 label=HOST_PORT,
                                                 info="Optional, (default: 8000)",
@@ -544,7 +553,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 scale=1
                                             )
                                         nim_generator_id = gr.Textbox(
-                                            value = "deepseek-r1:32b",
+                                            value = LOCAL_LLM_MODEL,
                                              placeholder = "meta/llama-3.1-8b-instruct",
                                             label=HOST_MODEL,
                                             info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
@@ -605,14 +614,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         
                                         with gr.Row():
                                             nim_hallucination_ip = gr.Textbox(
-                                                value = "host.docker.internal",
+                                                value = LOCAL_LLM_HOST,
                                                 label=HOST_NAME,
                                                 info="Local microservice OR IP address running a remote microservice",
                                                 elem_id="rag-inputs",
                                                 scale=2
                                             )
                                             nim_hallucination_port = gr.Textbox(
-                                                value = "11434",
+                                                value = LOCAL_LLM_PORT,
                                                 placeholder="8000",
                                                 label=HOST_PORT,
                                                 info="Optional, (default: 8000)",
@@ -620,7 +629,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 scale=1
                                             )
                                         nim_hallucination_id = gr.Textbox(
-                                            value = "deepseek-r1:32b",
+                                            value = LOCAL_LLM_MODEL,
                                              placeholder = "meta/llama-3.1-8b-instruct",
                                             label=HOST_MODEL,
                                             info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
@@ -681,14 +690,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                         
                                         with gr.Row():
                                             nim_answer_ip = gr.Textbox(
-                                                value = "host.docker.internal",
+                                                value = LOCAL_LLM_HOST,
                                                 label=HOST_NAME,
                                                 info="Local microservice OR IP address running a remote microservice",
                                                 elem_id="rag-inputs",
                                                 scale=2
                                             )
                                             nim_answer_port = gr.Textbox(
-                                                value = "11434",
+                                                value = LOCAL_LLM_PORT,
                                                 placeholder="8000",
                                                 label=HOST_PORT,
                                                 info="Optional, (default: 8000)",
@@ -696,7 +705,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 scale=1
                                             )
                                         nim_answer_id = gr.Textbox(
-                                            value = "deepseek-r1:32b",
+                                            value = LOCAL_LLM_MODEL,
                                              placeholder = "meta/llama-3.1-8b-instruct",
                                             label=HOST_MODEL,
                                             info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
