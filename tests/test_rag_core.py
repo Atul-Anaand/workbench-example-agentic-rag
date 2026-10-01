@@ -352,6 +352,86 @@ class TestGraphLogic(unittest.TestCase):
             )
 
 
+
+class TestGenerationGrading(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.graph = importlib.import_module("chatui.utils.graph")
+
+    def _state(self):
+        return {
+            "question": "test question",
+            "documents": [SimpleNamespace(page_content="test context")],
+            "generation": "test answer",
+            "prompt_hallucination": "check {generation} {documents}",
+            "prompt_answer": "check {generation} {question}",
+            "hallucination_use_nim": False,
+            "hallucination_model_id": "test-model",
+            "nim_hallucination_ip": "unused",
+            "nim_hallucination_port": "unused",
+            "nim_hallucination_id": "unused",
+            "nim_hallucination_gpu_type": None,
+            "nim_hallucination_gpu_count": None,
+            "answer_use_nim": False,
+            "answer_model_id": "test-model",
+            "nim_answer_ip": "unused",
+            "nim_answer_port": "unused",
+            "nim_answer_id": "unused",
+            "nim_answer_gpu_type": None,
+            "nim_answer_gpu_count": None,
+        }
+
+    def _run_with_scores(self, scores):
+        class DummyChain:
+            def __init__(self):
+                self.index = 0
+
+            def __or__(self, _other):
+                return self
+
+            def bind(self, **_kwargs):
+                return self
+
+            def invoke(self, _payload):
+                result = scores[self.index]
+                self.index += 1
+                return result
+
+        chain = DummyChain()
+
+        with patch.object(
+            self.graph, "PromptTemplate", return_value=chain
+        ), patch.object(
+            self.graph, "ChatNVIDIA", return_value=chain
+        ):
+            return self.graph.grade_generation_v_documents_and_question(
+                self._state()
+            )
+
+    def test_grounded_and_useful_returns_useful(self):
+        self.assertEqual(
+            self._run_with_scores(
+                [{"score": "yes"}, {"score": "yes"}]
+            ),
+            "useful",
+        )
+
+    def test_grounded_but_not_useful_returns_not_useful(self):
+        self.assertEqual(
+            self._run_with_scores(
+                [{"score": "yes"}, {"score": "no"}]
+            ),
+            "not useful",
+        )
+
+    def test_ungrounded_returns_not_supported(self):
+        self.assertEqual(
+            self._run_with_scores(
+                [{"score": "no"}]
+            ),
+            "not supported",
+        )
+
 class TestCustomChatOpenAI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
