@@ -145,6 +145,98 @@ class TestLocalOllamaEmbeddings(unittest.TestCase):
                 adapter.embed_query("failure case")
 
 
+
+class TestLocalLLMConfiguration(unittest.TestCase):
+    def test_local_llm_defaults(self):
+        import os
+        import importlib
+
+        keys = [
+            "LOCAL_LLM_ENABLED",
+            "LOCAL_LLM_HOST",
+            "LOCAL_LLM_PORT",
+            "LOCAL_LLM_MODEL",
+        ]
+        saved = {key: os.environ.get(key) for key in keys}
+
+        try:
+            for key in keys:
+                os.environ.pop(key, None)
+
+            sys.modules.pop("chatui.pages.converse", None)
+            converse = importlib.import_module("chatui.pages.converse")
+
+            self.assertTrue(converse.LOCAL_LLM_ENABLED)
+            self.assertEqual(
+                converse.LOCAL_LLM_HOST,
+                "host.docker.internal",
+            )
+            self.assertEqual(converse.LOCAL_LLM_PORT, "11434")
+            self.assertEqual(
+                converse.LOCAL_LLM_MODEL,
+                "deepseek-r1:32b",
+            )
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            sys.modules.pop("chatui.pages.converse", None)
+
+    def test_local_llm_environment_overrides(self):
+        import os
+        import importlib
+
+        overrides = {
+            "LOCAL_LLM_ENABLED": "false",
+            "LOCAL_LLM_HOST": "127.0.0.1",
+            "LOCAL_LLM_PORT": "12345",
+            "LOCAL_LLM_MODEL": "test-model",
+        }
+        keys = list(overrides)
+        saved = {key: os.environ.get(key) for key in keys}
+
+        try:
+            os.environ.update(overrides)
+
+            sys.modules.pop("chatui.pages.converse", None)
+            converse = importlib.import_module("chatui.pages.converse")
+
+            self.assertFalse(converse.LOCAL_LLM_ENABLED)
+            self.assertEqual(converse.LOCAL_LLM_HOST, "127.0.0.1")
+            self.assertEqual(converse.LOCAL_LLM_PORT, "12345")
+            self.assertEqual(converse.LOCAL_LLM_MODEL, "test-model")
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            sys.modules.pop("chatui.pages.converse", None)
+
+    def test_local_llm_enabled_accepts_supported_true_values(self):
+        import os
+        import importlib
+
+        original = os.environ.get("LOCAL_LLM_ENABLED")
+
+        try:
+            for value in ("1", "true", "TRUE", "yes", "on"):
+                os.environ["LOCAL_LLM_ENABLED"] = value
+                sys.modules.pop("chatui.pages.converse", None)
+                converse = importlib.import_module("chatui.pages.converse")
+                self.assertTrue(
+                    converse.LOCAL_LLM_ENABLED,
+                    msg=f"Expected '{value}' to enable local LLM",
+                )
+        finally:
+            if original is None:
+                os.environ.pop("LOCAL_LLM_ENABLED", None)
+            else:
+                os.environ["LOCAL_LLM_ENABLED"] = original
+            sys.modules.pop("chatui.pages.converse", None)
+
 class TestGraphLogic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
