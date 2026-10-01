@@ -237,6 +237,62 @@ class TestLocalLLMConfiguration(unittest.TestCase):
                 os.environ["LOCAL_LLM_ENABLED"] = original
             sys.modules.pop("chatui.pages.converse", None)
 
+
+class TestLLMOutputContracts(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.graph = importlib.import_module("chatui.utils.graph")
+
+    def test_validate_datasource_accepts_vectorstore(self):
+        self.assertEqual(
+            self.graph._validate_datasource({"datasource": "vectorstore"}),
+            "vectorstore",
+        )
+
+    def test_validate_datasource_accepts_web_search(self):
+        self.assertEqual(
+            self.graph._validate_datasource({"datasource": "web_search"}),
+            "web_search",
+        )
+
+    def test_validate_datasource_rejects_missing_field(self):
+        with self.assertRaisesRegex(ValueError, "invalid datasource"):
+            self.graph._validate_datasource({})
+
+    def test_validate_datasource_rejects_unknown_value(self):
+        with self.assertRaisesRegex(ValueError, "invalid datasource"):
+            self.graph._validate_datasource({"datasource": "database"})
+
+    def test_validate_binary_score_normalizes_valid_values(self):
+        self.assertEqual(
+            self.graph._validate_binary_score(
+                {"score": "YES"}, "Test Grader"
+            ),
+            "yes",
+        )
+        self.assertEqual(
+            self.graph._validate_binary_score(
+                {"score": "no"}, "Test Grader"
+            ),
+            "no",
+        )
+
+    def test_validate_binary_score_rejects_missing_field(self):
+        with self.assertRaisesRegex(ValueError, "invalid score"):
+            self.graph._validate_binary_score({}, "Test Grader")
+
+    def test_validate_binary_score_rejects_invalid_value(self):
+        with self.assertRaisesRegex(ValueError, "invalid score"):
+            self.graph._validate_binary_score(
+                {"score": "maybe"}, "Test Grader"
+            )
+
+    def test_validate_binary_score_rejects_non_object(self):
+        with self.assertRaisesRegex(ValueError, "invalid JSON object"):
+            self.graph._validate_binary_score(
+                ["yes"], "Test Grader"
+            )
+
 class TestGraphLogic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

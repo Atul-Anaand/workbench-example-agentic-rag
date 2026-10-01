@@ -112,6 +112,40 @@ def _model_desc(state, component):
     return f"{state[f'{component}_model_id']} (NVIDIA API endpoint)"
 
 
+def _validate_datasource(result):
+    """Validate and return the router datasource contract."""
+    if not isinstance(result, dict):
+        raise ValueError(
+            f"Router returned an invalid JSON object: {result!r}"
+        )
+
+    datasource = result.get("datasource")
+    if datasource not in {"web_search", "vectorstore"}:
+        raise ValueError(
+            f"Router returned invalid datasource: {datasource!r}; "
+            "expected 'web_search' or 'vectorstore'"
+        )
+
+    return datasource
+
+
+def _validate_binary_score(result, component):
+    """Validate and normalize a binary grader score."""
+    if not isinstance(result, dict):
+        raise ValueError(
+            f"{component} returned an invalid JSON object: {result!r}"
+        )
+
+    score = result.get("score")
+    if not isinstance(score, str) or score.strip().lower() not in {"yes", "no"}:
+        raise ValueError(
+            f"{component} returned invalid score: {score!r}; "
+            "expected 'yes' or 'no'"
+        )
+
+    return score.strip().lower()
+
+
 ### Nodes
 
 
@@ -200,7 +234,7 @@ def grade_documents(state):
         score = retrieval_grader.invoke(
             {"question": question, "document": d.page_content}
         )
-        grade = score["score"]
+        grade = _validate_binary_score(score, "Retrieval Grader")
         # Document relevant
         if grade.lower() == "yes":
             print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✓ relevant")
@@ -286,7 +320,8 @@ def route_question(state):
                                temperature=0.7) if state["router_use_nim"] else ChatNVIDIA(model=state["router_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
     question_router = prompt | llm | JsonOutputParser()
     source = question_router.invoke({"question": question})
-    if source["datasource"] == "web_search":
+    datasource = _validate_datasource(source)
+    if datasource == "web_search":
         print("[Router] → Question falls outside the document context — routing to web search")
         return "websearch"
     elif source["datasource"] == "vectorstore":
@@ -354,7 +389,7 @@ def grade_generation_v_documents_and_question(state):
     score = hallucination_grader.invoke(
         {"documents": documents, "generation": generation}
     )
-    grade = score["score"]
+    grade = _validate_binary_score(score, "Hallucination Grader")
 
     # Check hallucination
     prompt = PromptTemplate(
@@ -374,7 +409,7 @@ def grade_generation_v_documents_and_question(state):
         # Check question-answering
         print(f"[Answer Grader] Checking the answer addresses the question using {_model_desc(state, 'answer')}...")
         score = answer_grader.invoke({"question": question, "generation": generation})
-        grade = score["score"]
+        grade = _validate_binary_score(score, "Answer Grader")
         if grade == "yes":
             print("[Answer Grader] ✓ Answer addresses the question")
             return "useful"
