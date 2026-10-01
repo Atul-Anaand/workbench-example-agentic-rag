@@ -146,6 +146,173 @@ class TestLocalOllamaEmbeddings(unittest.TestCase):
 
 
 
+
+class TestCustomChatOpenAIRequest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.nim = importlib.import_module("chatui.utils.nim")
+        import openai
+        cls.openai = openai
+
+    def test_call_custom_endpoint_builds_expected_request(self):
+        from langchain_core.messages import HumanMessage
+
+        captured = {}
+
+        def fake_create(**config):
+            captured.update(config)
+            return SimpleNamespace()
+
+        original_api_key = getattr(self.openai, "api_key", None)
+        original_base_url = getattr(self.openai, "base_url", None)
+
+        try:
+            with patch.object(
+                self.openai.chat.completions,
+                "create",
+                side_effect=fake_create,
+            ):
+                self.openai_adapter = self.nim.CustomChatOpenAI(
+                    custom_endpoint="host.docker.internal",
+                    port="11434",
+                    model_name="deepseek-r1:32b",
+                    temperature=0.25,
+                )
+
+                self.openai_adapter._call_custom_endpoint(
+                    [HumanMessage(content="hello world")]
+                )
+
+            self.assertEqual(
+                self.openai.base_url,
+                "http://host.docker.internal:11434/v1/",
+            )
+            self.assertEqual(captured["model"], "deepseek-r1:32b")
+            self.assertEqual(captured["temperature"], 0.25)
+            self.assertEqual(
+                captured["messages"],
+                [{"role": "user", "content": "hello world"}],
+            )
+            self.assertNotIn("gpu_config", captured)
+        finally:
+            self.openai.api_key = original_api_key
+            self.openai.base_url = original_base_url
+
+    def test_call_custom_endpoint_includes_gpu_configuration(self):
+        from langchain_core.messages import HumanMessage
+
+        captured = {}
+
+        def fake_create(**config):
+            captured.update(config)
+            return SimpleNamespace()
+
+        original_api_key = getattr(self.openai, "api_key", None)
+        original_base_url = getattr(self.openai, "base_url", None)
+
+        try:
+            with patch.object(
+                self.openai.chat.completions,
+                "create",
+                side_effect=fake_create,
+            ):
+                adapter = self.nim.CustomChatOpenAI(
+                    custom_endpoint="gpu-host",
+                    port="9000",
+                    model_name="test-model",
+                    gpu_type="RTX 5070 Ti",
+                    gpu_count="1",
+                )
+
+                with patch.object(
+                    self.nim.gpu_compatibility,
+                    "get_compatible_models",
+                    return_value={
+                        "warning_message": "",
+                        "compatible_models": ["test-model"],
+                    },
+                ):
+                    adapter._call_custom_endpoint(
+                        [HumanMessage(content="gpu test")]
+                    )
+
+            self.assertEqual(
+                captured["gpu_config"],
+                {"type": "RTX 5070 Ti", "count": "1"},
+            )
+        finally:
+            self.openai.api_key = original_api_key
+            self.openai.base_url = original_base_url
+
+    def test_custom_endpoint_error_propagates_without_gpu_configuration(self):
+        from langchain_core.messages import HumanMessage
+
+        expected = RuntimeError("endpoint unavailable")
+
+        original_api_key = getattr(self.openai, "api_key", None)
+        original_base_url = getattr(self.openai, "base_url", None)
+
+        try:
+            with patch.object(
+                self.openai.chat.completions,
+                "create",
+                side_effect=expected,
+            ):
+                adapter = self.nim.CustomChatOpenAI(
+                    custom_endpoint="host",
+                    port="11434",
+                    model_name="test-model",
+                )
+
+                with self.assertRaises(RTError if False else RuntimeError) as ctx:
+                    adapter._call_custom_endpoint(
+                        [HumanMessage(content="failure")]
+                    )
+
+                self.assertIs(ctx.exception, expected)
+        finally:
+            self.openai.api_key = original_api_key
+            self.openai.base_url = original_base_url
+
+    def test_custom_endpoint_error_with_gpu_configuration_is_contextualized(self):
+        from langchain_core.messages import HumanMessage
+
+        original_api_key = getattr(self.openai, "api_key", None)
+        original_base_url = getattr(self.openai, "base_url", None)
+
+        try:
+            with patch.object(
+                self.openai.chat.completions,
+                "create",
+                side_effect=RuntimeError("endpoint unavailable"),
+            ):
+                adapter = self.nim.CustomChatOpenAI(
+                    custom_endpoint="host",
+                    port="11434",
+                    model_name="test-model",
+                    gpu_type="RTX 5070 Ti",
+                    gpu_count="1",
+                )
+
+                with patch.object(
+                    self.nim.gpu_compatibility,
+                    "get_compatible_models",
+                    return_value={
+                        "warning_message": "",
+                        "compatible_models": ["test-model"],
+                    },
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        r"Error with GPU configuration \(RTX 5070 Ti, 1 GPUs\)",
+                    ):
+                        adapter._call_custom_endpoint(
+                            [HumanMessage(content="failure")]
+                        )
+        finally:
+            self.openai.api_key = original_api_key
+            self.openai.base_url = original_base_url
+
 class TestLocalLLMConfiguration(unittest.TestCase):
     def test_local_llm_defaults(self):
         import os
