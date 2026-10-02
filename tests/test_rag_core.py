@@ -785,3 +785,68 @@ class TestRetrievalGradingContract(unittest.TestCase):
 
         self.assertEqual(result["documents"], [])
         self.assertEqual(result["web_search"], "Yes")
+
+
+class TestRetrievalGradingConcurrency(unittest.TestCase):
+    def _load_graph_with_mocks(self):
+        return importlib.import_module("chatui.utils.graph")
+
+    def _state(self):
+        return {
+            "question": "What is NVIDIA AI Workbench?",
+            "documents": [
+                SimpleNamespace(page_content="document-1"),
+                SimpleNamespace(page_content="document-2"),
+                SimpleNamespace(page_content="document-3"),
+                SimpleNamespace(page_content="document-4"),
+            ],
+            "prompt_retrieval": (
+                "Question: {question}\n"
+                "Document: {document}"
+            ),
+            "retrieval_use_nim": True,
+            "nim_retrieval_ip": "localhost",
+            "nim_retrieval_port": "11434",
+            "nim_retrieval_id": "test-model",
+        }
+
+    def test_grade_documents_can_grade_documents_concurrently(self):
+        graph = self._load_graph_with_mocks()
+
+        import threading
+        import time
+
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        class FakeChain:
+            def invoke(self, payload):
+                nonlocal active, max_active
+
+                with lock:
+                    active += 1
+                    max_active = max(max_active, active)
+
+                time.sleep(0.05)
+
+                with lock:
+                    active -= 1
+
+                return {"score": "yes"}
+
+        with patch.object(graph, "PromptTemplate") as mock_prompt, \
+             patch.object(graph.nim, "CustomChatOpenAI") as mock_llm:
+
+            mock_prompt.return_value.__or__.return_value.__or__.return_value = FakeChain()
+            mock_llm.return_value = object()
+
+            result = graph.grade_documents(self._state())
+
+        self.assertEqual(len(result["documents"]), 4)
+        self.assertEqual(result["web_search"], "No")
+        self.assertGreaterEqual(
+            max_active,
+            2,
+            "Retrieval grading is still completely sequential",
+        )

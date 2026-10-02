@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from typing_extensions import TypedDict
 from typing import List, Optional
@@ -230,20 +231,24 @@ def grade_documents(state):
                                gpu_count=state["nim_retrieval_gpu_count"] if "nim_retrieval_gpu_count" in state else None,
                                temperature=0.7) if state["retrieval_use_nim"] else ChatNVIDIA(model=state["retrieval_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
     retrieval_grader = prompt | llm | JsonOutputParser()
-    for i, d in enumerate(documents):
+
+    def grade_document(document):
         score = retrieval_grader.invoke(
-            {"question": question, "document": d.page_content}
+            {"question": question, "document": document.page_content}
         )
-        grade = _validate_binary_score(score, "Retrieval Grader")
-        # Document relevant
-        if grade.lower() == "yes":
+        return _validate_binary_score(score, "Retrieval Grader")
+
+    # Grading is I/O-bound and each document can be graded independently.
+    # Keep results in document order so downstream behavior remains deterministic.
+    with ThreadPoolExecutor(max_workers=min(4, len(documents))) as executor:
+        grades = list(executor.map(grade_document, documents))
+
+    for i, (document, grade) in enumerate(zip(documents, grades)):
+        if grade == "yes":
             print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✓ relevant")
-            filtered_docs.append(d)
-        # Document not relevant
+            filtered_docs.append(document)
         else:
             print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✗ not relevant — discarded")
-            # We do not include the document in filtered_docs
-            continue
     # We set a flag to indicate that we want to run web search if insufficient relevant docs found
     web_search = "Yes" if len(filtered_docs) < 1 else "No"
     print(f"[Retrieval Grader] Kept {len(filtered_docs)} of {len(documents)} chunk(s)")
