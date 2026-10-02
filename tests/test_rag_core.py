@@ -688,3 +688,100 @@ class TestCustomChatOpenAI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestRetrievalGradingContract(unittest.TestCase):
+    def _load_graph_with_mocks(self):
+        graph = importlib.import_module("chatui.utils.graph")
+        return graph
+
+    def _state(self):
+        return {
+            "question": "What is NVIDIA AI Workbench?",
+            "documents": [
+                SimpleNamespace(page_content="document-1"),
+                SimpleNamespace(page_content="document-2"),
+                SimpleNamespace(page_content="document-3"),
+                SimpleNamespace(page_content="document-4"),
+            ],
+            "prompt_retrieval": (
+                "Question: {question}\n"
+                "Document: {document}"
+            ),
+            "retrieval_use_nim": True,
+            "nim_retrieval_ip": "localhost",
+            "nim_retrieval_port": "11434",
+            "nim_retrieval_id": "test-model",
+        }
+
+    def test_grade_documents_preserves_document_order_and_filters(self):
+        graph = self._load_graph_with_mocks()
+
+        scores = {
+            "document-1": {"score": "yes"},
+            "document-2": {"score": "no"},
+            "document-3": {"score": "yes"},
+            "document-4": {"score": "no"},
+        }
+
+        class FakeChain:
+            def invoke(self, payload):
+                return scores[payload["document"]]
+
+        with patch.object(graph, "PromptTemplate") as mock_prompt, \
+             patch.object(graph.nim, "CustomChatOpenAI") as mock_llm:
+
+            mock_prompt.return_value.__or__.return_value.__or__.return_value = FakeChain()
+            mock_llm.return_value = object()
+
+            result = graph.grade_documents(self._state())
+
+        self.assertEqual(
+            [doc.page_content for doc in result["documents"]],
+            ["document-1", "document-3"],
+        )
+        self.assertEqual(result["web_search"], "No")
+        self.assertEqual(result["question"], "What is NVIDIA AI Workbench?")
+
+    def test_grade_documents_requests_one_grade_per_document(self):
+        graph = self._load_graph_with_mocks()
+
+        requested = []
+
+        class FakeChain:
+            def invoke(self, payload):
+                requested.append(payload["document"])
+                return {"score": "yes"}
+
+        with patch.object(graph, "PromptTemplate") as mock_prompt, \
+             patch.object(graph.nim, "CustomChatOpenAI") as mock_llm:
+
+            mock_prompt.return_value.__or__.return_value.__or__.return_value = FakeChain()
+            mock_llm.return_value = object()
+
+            result = graph.grade_documents(self._state())
+
+        self.assertEqual(
+            requested,
+            ["document-1", "document-2", "document-3", "document-4"],
+        )
+        self.assertEqual(len(result["documents"]), 4)
+        self.assertEqual(result["web_search"], "No")
+
+    def test_grade_documents_sets_web_search_when_all_documents_rejected(self):
+        graph = self._load_graph_with_mocks()
+
+        class FakeChain:
+            def invoke(self, payload):
+                return {"score": "no"}
+
+        with patch.object(graph, "PromptTemplate") as mock_prompt, \
+             patch.object(graph.nim, "CustomChatOpenAI") as mock_llm:
+
+            mock_prompt.return_value.__or__.return_value.__or__.return_value = FakeChain()
+            mock_llm.return_value = object()
+
+            result = graph.grade_documents(self._state())
+
+        self.assertEqual(result["documents"], [])
+        self.assertEqual(result["web_search"], "Yes")
