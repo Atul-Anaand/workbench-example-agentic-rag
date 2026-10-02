@@ -215,6 +215,13 @@ class TestCustomChatOpenAIRequest(unittest.TestCase):
                 self.openai.chat.completions,
                 "create",
                 side_effect=fake_create,
+            ), patch.object(
+                self.nim.gpu_compatibility,
+                "get_compatible_models",
+                return_value={
+                    "warning_message": "",
+                    "compatible_models": ["test-model"],
+                },
             ):
                 adapter = self.nim.CustomChatOpenAI(
                     custom_endpoint="gpu-host",
@@ -224,17 +231,9 @@ class TestCustomChatOpenAIRequest(unittest.TestCase):
                     gpu_count="1",
                 )
 
-                with patch.object(
-                    self.nim.gpu_compatibility,
-                    "get_compatible_models",
-                    return_value={
-                        "warning_message": "",
-                        "compatible_models": ["test-model"],
-                    },
-                ):
-                    adapter._call_custom_endpoint(
-                        [HumanMessage(content="gpu test")]
-                    )
+                adapter._call_custom_endpoint(
+                    [HumanMessage(content="gpu test")]
+                )
 
             self.assertEqual(
                 captured["gpu_config"],
@@ -285,6 +284,13 @@ class TestCustomChatOpenAIRequest(unittest.TestCase):
                 self.openai.chat.completions,
                 "create",
                 side_effect=RuntimeError("endpoint unavailable"),
+            ), patch.object(
+                self.nim.gpu_compatibility,
+                "get_compatible_models",
+                return_value={
+                    "warning_message": "",
+                    "compatible_models": ["test-model"],
+                },
             ):
                 adapter = self.nim.CustomChatOpenAI(
                     custom_endpoint="host",
@@ -294,15 +300,7 @@ class TestCustomChatOpenAIRequest(unittest.TestCase):
                     gpu_count="1",
                 )
 
-                with patch.object(
-                    self.nim.gpu_compatibility,
-                    "get_compatible_models",
-                    return_value={
-                        "warning_message": "",
-                        "compatible_models": ["test-model"],
-                    },
-                ):
-                    with self.assertRaisesRegex(
+                with self.assertRaisesRegex(
                         ValueError,
                         r"Error with GPU configuration \(RTX 5070 Ti, 1 GPUs\)",
                     ):
