@@ -56,6 +56,24 @@ LOCAL_LLM_HOST = os.getenv("LOCAL_LLM_HOST", "host.docker.internal")
 LOCAL_LLM_PORT = os.getenv("LOCAL_LLM_PORT", "11434")
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "deepseek-r1:32b")
 
+# List of local Ollama models for the dropdown
+LOCAL_MODELS = [
+    "nemotron-mini:4b",
+    "business-copilot-gemma3-27b-test:latest",
+    "gemma3:27b",
+    "phi4:14b",
+    "qwen2.5:32b-instruct-q4_K_M",
+    "qwen2.5-coder:7b",
+    "qwen3:14b",
+    "deepseek-r1:14b",
+    "qwen3.5:9b",
+    "mistral-nemo:12b",
+    "deepseek-r1:32b",
+    "qwen2.5:14b",
+    "llama3:latest",
+    "deepseek-r1:32b-qwen-distill-q4_K_M"
+]
+
 
 # Model identifiers with prefix
 NANO = "nvidia/nemotron-3-nano-30b-a3b"
@@ -399,21 +417,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 elem_id="rag-inputs",
                                                 scale=1
                                             )
-                                        nim_router_id = gr.Textbox(
-                                            value = LOCAL_LLM_MODEL,
-                                             placeholder = "meta/llama-3.1-8b-instruct",
+                                        nim_router_id = gr.Dropdown(
+                                            choices=LOCAL_MODELS,
+                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
                                             label=HOST_MODEL,
-                                            info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
+                                            info="Select a local Ollama model",
                                             elem_id="rag-inputs",
                                             interactive=True
                                         )
-                                        # nim_router_id = gr.Dropdown(
-                                        #     choices=[],
-                                        #     label="Model running in microservice",
-                                        #     info="Select a compatible model for your GPU configuration",
-                                        #     elem_id="rag-inputs",
-                                        #     interactive=False
-                                        # )
 
                                         # Add warning box for compatibility issues
                                         nim_router_warning = gr.Markdown(visible=False, value="")
@@ -476,21 +487,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 elem_id="rag-inputs",
                                                 scale=1
                                             )
-                                        nim_retrieval_id = gr.Textbox(
-                                            value = LOCAL_LLM_MODEL,
-                                             placeholder = "meta/llama-3.1-8b-instruct",
+                                        nim_retrieval_id = gr.Dropdown(
+                                            choices=LOCAL_MODELS,
+                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
                                             label=HOST_MODEL,
-                                            info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
+                                            info="Select a local Ollama model",
                                             elem_id="rag-inputs",
                                             interactive=True
                                         )                                        
-                                        # nim_retrieval_id = gr.Dropdown(
-                                        #     choices=[],
-                                        #     label="Model running in microservice",
-                                        #     info="Select a compatible model for your GPU configuration",
-                                        #     elem_id="rag-inputs",
-                                        #     interactive=False
-                                        # )
 
                                         # Add warning box for compatibility issues
                                         nim_retrieval_warning = gr.Markdown(visible=False, value="")
@@ -552,21 +556,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 elem_id="rag-inputs",
                                                 scale=1
                                             )
-                                        nim_generator_id = gr.Textbox(
-                                            value = LOCAL_LLM_MODEL,
-                                             placeholder = "meta/llama-3.1-8b-instruct",
+                                        nim_generator_id = gr.Dropdown(
+                                            choices=LOCAL_MODELS,
+                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
                                             label=HOST_MODEL,
-                                            info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
+                                            info="Select a local Ollama model",
                                             elem_id="rag-inputs",
                                             interactive=True
                                         )
-                                        # nim_generator_id = gr.Dropdown(
-                                        #     choices=[],
-                                        #     label="Model running in microservice",
-                                        #     info="Select a compatible model for your GPU configuration",
-                                        #     elem_id="rag-inputs",
-                                        #     interactive=False
-                                        # )
 
                                         # Add warning box for compatibility issues
                                         nim_generator_warning = gr.Markdown(visible=False, value="")
@@ -628,21 +625,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 elem_id="rag-inputs",
                                                 scale=1
                                             )
-                                        nim_hallucination_id = gr.Textbox(
-                                            value = LOCAL_LLM_MODEL,
-                                             placeholder = "meta/llama-3.1-8b-instruct",
+                                        nim_hallucination_id = gr.Dropdown(
+                                            choices=LOCAL_MODELS,
+                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
                                             label=HOST_MODEL,
-                                            info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
+                                            info="Select a local Ollama model",
                                             elem_id="rag-inputs",
                                             interactive=True
                                         )
-                                        # nim_hallucination_id = gr.Dropdown(
-                                        #     choices=[],
-                                        #     label="Model running in microservice",
-                                        #     info="Select a compatible model for your GPU configuration",
-                                        #     elem_id="rag-inputs",
-                                        #     interactive=False
-                                        # )
 
                                         # Add warning box for compatibility issues
                                         nim_hallucination_warning = gr.Markdown(visible=False, value="")
@@ -704,22 +694,14 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                 elem_id="rag-inputs",
                                                 scale=1
                                             )
-                                        nim_answer_id = gr.Textbox(
-                                            value = LOCAL_LLM_MODEL,
-                                             placeholder = "meta/llama-3.1-8b-instruct",
+                                        nim_answer_id = gr.Dropdown(
+                                            choices=LOCAL_MODELS,
+                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
                                             label=HOST_MODEL,
-                                            info="If none specified, defaults to: meta/llama-3.1-8b-instruct",
+                                            info="Select a local Ollama model",
                                             elem_id="rag-inputs",
                                             interactive=True
-                                            )   
-
-                                        # nim_answer_id = gr.Dropdown(
-                                        #     choices=[],
-                                        #     label="Model running in microservice",
-                                        #     info="Select a compatible model for your GPU configuration",
-                                        #     elem_id="rag-inputs",
-                                        #     interactive=False
-                                        # )
+                                        )   
 
                                         # Add warning box for compatibility issues
                                         nim_answer_warning = gr.Markdown(visible=False, value="")
