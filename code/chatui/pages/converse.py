@@ -231,7 +231,46 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
     """ List of currently supported models. """
     
-    model_list = [ULTRA, SUPER, NANO]
+    # Current NGC API Endpoint Models (as of 2026)
+    model_list = [
+        # NVIDIA Nemotron (Current Generation)
+        "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3.5-lightning-30b-a3b",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        "nvidia/llama-3.1-nemotron-51b-instruct",
+        "nvidia/nemotron-4-340b-instruct",
+        
+        # Moonshot AI
+        "moonshotai/kimi-k3",
+        "moonshotai/kimi-k2.6",
+        
+        # DeepSeek
+        "deepseek-ai/deepseek-v4.1-flash",
+        
+        # Google
+        "google/gemma-4-31b-it",
+        
+        # Mistral
+        "mistralai/mistral-large-2-instruct",
+        "mistralai/mistral-large",
+        
+        # Z-AI
+        "z-ai/glm-5.3",
+        "z-ai/glm-5.3-flash",
+        
+        # OpenAI OSS
+        "openai/gpt-oss-20b",
+        
+        # Writer
+        "writer/palmyra-creative-122b",
+        
+        # Small/fast models (good for Router & Graders)
+        "nv-mistralai/mistral-nemo-12b-instruct",
+        "microsoft/phi-3.5-moe-instruct",
+        "mistralai/mistral-7b-instruct-v0.3",
+    ]
 
     with gr.Blocks(title=TITLE, theme=kui_theme, css=kui_styles + _LOCAL_CSS) as page:
         gr.Markdown(f"# {TITLE}")
