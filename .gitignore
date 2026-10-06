@@ -57,4 +57,4 @@ data/scratch/*
 !data/scratch/.gitkeep
 data/chroma.sqlite3
 data/
-code/output.log
+code/output.logcode/output.log
