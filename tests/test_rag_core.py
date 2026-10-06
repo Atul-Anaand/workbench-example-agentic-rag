@@ -1,3 +1,7 @@
+import os
+# V1.4 Fix: Ensure OpenAI SDK doesn't fail on initialization during tests.
+# These tests mock the API calls, so a real key is not needed.
+os.environ.setdefault("OPENAI_API_KEY", "dummy-key-for-testing")
 import importlib
 import json
 import sys
