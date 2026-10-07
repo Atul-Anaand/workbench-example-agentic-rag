@@ -26,6 +26,8 @@ import time
 import sys
 import requests
 import json
+import warnings
+warnings.filterwarnings("ignore", message=".*type is unknown.*")
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphRecursionError 
