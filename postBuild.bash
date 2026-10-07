@@ -4,4 +4,4 @@
 #
 # Note: This file may be removed if you don't need to use it
 sudo -E apt-get update && sudo -E apt-get install ffmpeg libsm6 libxext6 -y
-pip install -r /project/requirements.txt
+pip install --user pytest

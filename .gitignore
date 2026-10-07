@@ -57,4 +57,10 @@ data/scratch/*
 !data/scratch/.gitkeep
 data/chroma.sqlite3
 data/
-code/output.logcode/output.log
+
+code/output.log
+# Vim swap files
+*.swp
+*.swo
+.*.swp
+
