@@ -311,6 +311,21 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     with gr.Column(min_width=350):
                         chatbot = gr.Chatbot(show_label=False, height=500)
 
+                # V1.7: Mode selector toggle
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=1, min_width=200):
+                        mode_selector = gr.Dropdown(
+                            choices=["🌐 Remote (NGC)", "💻 Local (Ollama)"],
+                            value="💻 Local (Ollama)" if LOCAL_LLM_ENABLED else "🌐 Remote (NGC)",
+                            label="Mode",
+                            interactive=True,
+                        )
+                    with gr.Column(scale=3, min_width=300):
+                        mode_banner = gr.Markdown(
+                            value="💻 **Current Mode: Local (Ollama)**" if LOCAL_LLM_ENABLED else "🌐 **Current Mode: Remote (NGC)**",
+                            elem_classes=["mode-banner"],
+                        )
+
                 # Message box for user input
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=3, min_width=450):
@@ -429,7 +444,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ########################
                             router_btn = gr.Button("Router", variant="sm")
                             with gr.Group(visible=False) as group_router:
-                                with gr.Tabs(selected=1) as router_tabs:
+                                with gr.Tabs(selected=(1 if LOCAL_LLM_ENABLED else 0)) as router_tabs:
                                     with gr.TabItem("API Endpoints", id=0) as router_api:
                                         router_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                         model_router = gr.Dropdown(model_list_non_reasoning, 
@@ -499,7 +514,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ##################################
                             retrieval_btn = gr.Button("Retrieval Grader", variant="sm")
                             with gr.Group(visible=False) as group_retrieval:
-                                with gr.Tabs(selected=1) as retrieval_tabs:
+                                with gr.Tabs(selected=(1 if LOCAL_LLM_ENABLED else 0)) as retrieval_tabs:
                                     retrieval_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
 
                                     with gr.TabItem("API Endpoints", id=0) as retrieval_api:
@@ -569,7 +584,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ###########################
                             generator_btn = gr.Button("Generator", variant="sm")
                             with gr.Group(visible=False) as group_generator:
-                                with gr.Tabs(selected=1) as generator_tabs:
+                                with gr.Tabs(selected=(1 if LOCAL_LLM_ENABLED else 0)) as generator_tabs:
                                     generator_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as generator_api:
                                         model_generator = gr.Dropdown(model_list, 
@@ -638,7 +653,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ######################################
                             hallucination_btn = gr.Button("Hallucination Grader", variant="sm")
                             with gr.Group(visible=False) as group_hallucination:
-                                with gr.Tabs(selected=1) as hallucination_tabs:
+                                with gr.Tabs(selected=(1 if LOCAL_LLM_ENABLED else 0)) as hallucination_tabs:
                                     hallucination_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as hallucination_api:
                                         model_hallucination = gr.Dropdown(model_list_non_reasoning, 
@@ -707,7 +722,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             ###############################
                             answer_btn = gr.Button("Answer Grader", variant="sm")
                             with gr.Group(visible=False) as group_answer:
-                                with gr.Tabs(selected=1) as answer_tabs:
+                                with gr.Tabs(selected=(1 if LOCAL_LLM_ENABLED else 0)) as answer_tabs:
                                     answer_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as answer_api:
                                         model_answer = gr.Dropdown(model_list_non_reasoning, 
@@ -1425,6 +1440,65 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_hallucination_id,
                                nim_answer_id,
                                chatbot], [msg, chatbot, actions]
+        )
+
+        # V1.7: Mode selector change handler
+        def _switch_mode(selected_mode: str):
+            is_remote = "Remote" in selected_mode
+            remote_model = "nvidia/nemotron-3-super-120b-a12b"
+            local_router = "llama3:latest"
+            local_generator = "phi4:14b"
+            if is_remote:
+                return (
+                    False, False, False, False, False,
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=local_router),
+                    gr.update(value=local_router),
+                    gr.update(value=local_generator),
+                    gr.update(value=local_router),
+                    gr.update(value=local_router),
+                    gr.update(selected=0),
+                    gr.update(selected=0),
+                    gr.update(selected=0),
+                    gr.update(selected=0),
+                    gr.update(selected=0),
+                    gr.update(value="🌐 **Current Mode: Remote (NGC)**"),
+                )
+            else:
+                return (
+                    True, True, True, True, True,
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=remote_model),
+                    gr.update(value=local_router),
+                    gr.update(value=local_router),
+                    gr.update(value=local_generator),
+                    gr.update(value=local_router),
+                    gr.update(value=local_router),
+                    gr.update(selected=1),
+                    gr.update(selected=1),
+                    gr.update(selected=1),
+                    gr.update(selected=1),
+                    gr.update(selected=1),
+                    gr.update(value="💻 **Current Mode: Local (Ollama)**"),
+                )
+
+        mode_selector.change(
+            _switch_mode,
+            inputs=[mode_selector],
+            outputs=[
+                router_use_nim, retrieval_use_nim, generator_use_nim, hallucination_use_nim, answer_use_nim,
+                model_router, model_retrieval, model_generator, model_hallucination, model_answer,
+                nim_router_id, nim_retrieval_id, nim_generator_id, nim_hallucination_id, nim_answer_id,
+                router_tabs, retrieval_tabs, generator_tabs, hallucination_tabs, answer_tabs,
+                mode_banner,
+            ],
         )
 
     page.queue()
