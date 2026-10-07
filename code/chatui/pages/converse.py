@@ -254,6 +254,15 @@ def fetch_ngc_models() -> list:
         print(f"[NGC] Model fetch failed: {e}. Using fallback.")
         return fallback
 
+# V1.7: Detect reasoning models that break JSON parsers
+REASONING_KEYWORDS = ["reasoning", "omni", "deepseek-r1", "-think"]
+
+def is_reasoning_model(model_name: str) -> bool:
+    """Detect models that may return content=null with reasoning_content,
+    which breaks the JSON parsers used by Router and Graders."""
+    name = model_name.lower()
+    return any(kw in name for kw in REASONING_KEYWORDS)
+
 def build_page(client: chat_client.ChatClient) -> gr.Blocks:
     """
     Build the gradio page to be mounted in the frame.
@@ -275,7 +284,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
     
     # V1.6: Auto-fetch the latest available NGC models
     model_list = fetch_ngc_models()
-
+        # V1.7: Filter reasoning models out of Router/Grader dropdowns
+    model_list_non_reasoning = [m for m in model_list if not is_reasoning_model(m)]
     with gr.Blocks(title=TITLE, theme=kui_theme, css=kui_styles + _LOCAL_CSS) as page:
         gr.Markdown(f"# {TITLE}")
 
@@ -420,7 +430,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 with gr.Tabs(selected=1) as router_tabs:
                                     with gr.TabItem("API Endpoints", id=0) as router_api:
                                         router_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
-                                        model_router = gr.Dropdown(model_list, 
+                                        model_router = gr.Dropdown(model_list_non_reasoning, 
                                                                 value=SUPER,
                                                                 label="Select a Model",
                                                                 elem_id="rag-inputs", 
@@ -491,7 +501,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                     retrieval_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
 
                                     with gr.TabItem("API Endpoints", id=0) as retrieval_api:
-                                        model_retrieval = gr.Dropdown(model_list, 
+                                        model_retrieval = gr.Dropdown(model_list_non_reasoning, 
                                                                             value=SUPER,
                                                                             label="Select a Model",
                                                                             elem_id="rag-inputs", 
@@ -629,7 +639,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 with gr.Tabs(selected=1) as hallucination_tabs:
                                     hallucination_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as hallucination_api:
-                                        model_hallucination = gr.Dropdown(model_list, 
+                                        model_hallucination = gr.Dropdown(model_list_non_reasoning, 
                                                                                 value=SUPER,
                                                                                 label="Select a Model",
                                                                                 elem_id="rag-inputs", 
@@ -698,7 +708,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                 with gr.Tabs(selected=1) as answer_tabs:
                                     answer_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as answer_api:
-                                        model_answer = gr.Dropdown(model_list, 
+                                        model_answer = gr.Dropdown(model_list_non_reasoning, 
                                                                         value=SUPER,
                                                                         elem_id="rag-inputs",
                                                                         label="Select a Model",
