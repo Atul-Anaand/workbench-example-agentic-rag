@@ -1,25 +1,12 @@
 # Create your compose file. To learn more, please visit
 # https://docs.docker.com/reference/compose-file/
-services:
-  local-nim:
-    image: nvcr.io/nim/meta/llama-3.1-8b-instruct:latest
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    ports:
-      - "8000:8000"
-    volumes:
-      - type: bind
-        source: /tmp
-        target: /opt/nim/.cache/
-    environment:
-      - NGC_API_KEY=${NVIDIA_API_KEY:?Error NVIDIA_API_KEY not set}
-      
+#
+# V1.6 cleanup: The 'local-nim' service was removed.
+# Reason: NIM containers require 20GB+ VRAM. Our 12GB GPU cannot run them.
+# Local inference is handled by Ollama on the host (via host.docker.internal).
+# Remote inference is handled by the NVIDIA NGC API.
+
+services: {}
+
 networks:
   default:
-    name: agentic-rag

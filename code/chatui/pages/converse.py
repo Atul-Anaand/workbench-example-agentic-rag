@@ -24,6 +24,7 @@ import os
 import subprocess
 import time
 import sys
+import requests
 import json
 
 from langchain_core.runnables import RunnableConfig
@@ -212,6 +213,47 @@ _LOCAL_CSS = """
 
 sys.stdout = logger.Logger("/project/code/output.log")
 
+# V1.6: Fetch available chat models from NGC API at runtime
+def fetch_ngc_models() -> list:
+    """Fetch the current list of chat-capable models from NGC."""
+    api_key = os.getenv("NVIDIA_API_KEY", "")
+    fallback = [
+        "nvidia/nemotron-3-super-120b-a12b",
+        "nvidia/nemotron-3-ultra-550b-a55b",
+        "nvidia/nemotron-3.5-lightning-30b-a3b",
+    ]
+    if not api_key:
+        print("[NGC] No NVIDIA_API_KEY set, using fallback list.")
+        return fallback
+
+    skip_keywords = [
+        "embed", "clip", "parse", "reward", "safety", "guard",
+        "detector", "calibration", "recurrentgemma", "deplot",
+        "kosmos", "vila", "neva", "diffusion", "synthetic",
+        "vision", "starcoder2", "palmyra", "riva-translate",
+        "nemoguard", "content-safety", "nemoretriever", "nemotron-parse",
+    ]
+
+    try:
+        resp = requests.get(
+            "https://integrate.api.nvidia.com/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        models = sorted(
+            m["id"] for m in data.get("data", [])
+            if not any(kw in m["id"].lower() for kw in skip_keywords)
+        )
+        print(f"[NGC] Auto-fetched {len(models)} chat models.")
+        return models if models else fallback
+
+    except Exception as e:
+        print(f"[NGC] Model fetch failed: {e}. Using fallback.")
+        return fallback
+
 def build_page(client: chat_client.ChatClient) -> gr.Blocks:
     """
     Build the gradio page to be mounted in the frame.
@@ -231,46 +273,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
     """ List of currently supported models. """
     
-    # Current NGC API Endpoint Models (as of 2026)
-    model_list = [
-        # NVIDIA Nemotron (Current Generation)
-        "nvidia/nemotron-3-super-120b-a12b",
-        "nvidia/nemotron-3-ultra-550b-a55b",
-        "nvidia/nemotron-3.5-lightning-30b-a3b",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
-        "nvidia/llama-3.1-nemotron-51b-instruct",
-        "nvidia/nemotron-4-340b-instruct",
-        
-        # Moonshot AI
-        "moonshotai/kimi-k3",
-        "moonshotai/kimi-k2.6",
-        
-        # DeepSeek
-        "deepseek-ai/deepseek-v4.1-flash",
-        
-        # Google
-        "google/gemma-4-31b-it",
-        
-        # Mistral
-        "mistralai/mistral-large-2-instruct",
-        "mistralai/mistral-large",
-        
-        # Z-AI
-        "z-ai/glm-5.3",
-        "z-ai/glm-5.3-flash",
-        
-        # OpenAI OSS
-        "openai/gpt-oss-20b",
-        
-        # Writer
-        "writer/palmyra-creative-122b",
-        
-        # Small/fast models (good for Router & Graders)
-        "nv-mistralai/mistral-nemo-12b-instruct",
-        "microsoft/phi-3.5-moe-instruct",
-        "mistralai/mistral-7b-instruct-v0.3",
-    ]
+    # V1.6: Auto-fetch the latest available NGC models
+    model_list = fetch_ngc_models()
 
     with gr.Blocks(title=TITLE, theme=kui_theme, css=kui_styles + _LOCAL_CSS) as page:
         gr.Markdown(f"# {TITLE}")
