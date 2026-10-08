@@ -265,6 +265,51 @@ def is_reasoning_model(model_name: str) -> bool:
     name = model_name.lower()
     return any(kw in name for kw in REASONING_KEYWORDS)
 
+# V2.0: Analyze images via remote NGC vision model
+def _analyze_image_with_vlm(image_path: str, question: str) -> str:
+    """Send an image to a remote VLM for analysis."""
+    import base64
+    api_key = os.getenv("NVIDIA_API_KEY", "")
+    if not api_key:
+        return "NVIDIA_API_KEY not set. Cannot analyze image."
+
+    try:
+        with open(image_path, "rb") as f:
+            image_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return f"Could not read image file: {e}"
+
+    ext = os.path.splitext(image_path)[1].lower()
+    mime_map = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp",
+    }
+    mime = mime_map.get(ext, "image/jpeg")
+
+    payload = {
+        "model": "meta/llama-3.2-11b-vision-instruct",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": question or "Describe this image in detail."},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}},
+            ],
+        }],
+        "max_tokens": 1024,
+    }
+
+    try:
+        resp = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=90,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"VLM call failed: {e}"
+
 def build_page(client: chat_client.ChatClient) -> gr.Blocks:
     """
     Build the gradio page to be mounted in the frame.
@@ -329,9 +374,11 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 # Message box for user input
                 with gr.Row(equal_height=True):
                     with gr.Column(scale=3, min_width=450):
-                        msg = gr.Textbox(
+                        msg = gr.MultimodalTextbox(
                             show_label=False,
-                            placeholder="Enter text and press ENTER",
+                            placeholder="Enter text or attach an image...",
+                            file_types=["image"],
+                            file_count="multiple",
                             container=False,
                             interactive=True,
                         )
@@ -1264,6 +1311,46 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
         """ This helper function builds out the submission function call when a user submits a query. """
         
+# V2.0: Multimodal router - images to VLM, text to RAG pipeline
+        def _multimodal_router(multimodal_value, *rag_args):
+            if isinstance(multimodal_value, dict):
+                text = (multimodal_value.get("text") or "").strip()
+                files = multimodal_value.get("files") or []
+            else:
+                text = str(multimodal_value or "").strip()
+                files = []
+
+            image_paths = []
+            for f in files:
+                if isinstance(f, dict):
+                    p = f.get("path") or ""
+                    n = (f.get("orig_name") or f.get("name") or "").lower()
+                elif isinstance(f, str):
+                    p = f
+                    n = f.lower()
+                else:
+                    continue
+                if n.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                    image_paths.append(p)
+
+            if image_paths:
+                question = text or "Describe this image in detail."
+                chat_history = rag_args[-1] if rag_args else []
+
+                print("")
+                print("[VLM] --------------------------------------------")
+                print("[VLM] Analyzing image: " + image_paths[0])
+                print("[VLM] Question: " + question)
+
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", "Analyzing image..."]], gr.update(show_label=False)
+
+                result = _analyze_image_with_vlm(image_paths[0], question)
+                print("[VLM] Analysis delivered")
+
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", result]], gr.update(show_label=False)
+            else:
+                yield from _my_build_stream(text, *rag_args)
+
         _my_build_stream = functools.partial(_stream_predict, client, app)
 
         # Submit a sample query
@@ -1408,7 +1495,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         )
         
         msg.submit(
-            _my_build_stream, [msg, 
+            _multimodal_router, [msg, 
                                model_generator,
                                model_router,
                                model_retrieval,
@@ -1600,7 +1687,7 @@ def _stream_predict(
               "answer_use_nim": answer_use_nim}
     
     if not valid_input(question):
-        yield "", chat_history + [[str(question), "*** ERR: Unable to process query. Query cannot be empty. ***"]], gr.update(show_label=False)
+        yield gr.update(value={"text": "", "files": []}), chat_history + [[str(question), "*** ERR: Unable to process query. Query cannot be empty. ***"]], gr.update(show_label=False)
     else:
         print("\n[Query] ────────────────────────────────────────────")
         print(f'[Query] Processing: "{question}"')
@@ -1609,11 +1696,11 @@ def _stream_predict(
             config = RunnableConfig(recursion_limit=RECURSION_LIMIT)
             for output in app.stream(inputs, config=config):
                 actions.update(output)
-                yield "", chat_history + [[question, "Working on getting you the best answer..."]], gr.update(value=actions)
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[question, "Working on getting you the best answer..."]], gr.update(value=actions)
                 for key, value in output.items():
                     final_value = value
             print("[Query] ✓ Response delivered to the chat window")
-            yield "", chat_history + [[question, final_value["generation"]]], gr.update(show_label=False)
+            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, final_value["generation"]]], gr.update(show_label=False)
 
         except Exception as e:
             traceback.print_exc()
@@ -1621,7 +1708,7 @@ def _stream_predict(
             message = _get_query_error_message(e)
             print(f"[Query] ✗ Query failed ({type(e).__name__}) — an explanation was posted to the chat window")
 
-            yield "", chat_history + [[question, message]], gr.update(show_label=False)
+            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, message]], gr.update(show_label=False)
 
 
 _support_matrix_cache = None

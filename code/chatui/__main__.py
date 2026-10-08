@@ -17,6 +17,18 @@
 
 The functions in this module are responsible for bootstrapping then executing the Conversation GUI server.
 """
+import gradio_client.utils as _gcu
+import gradio_client
+
+_orig_to_py = _gcu._json_schema_to_python_type
+
+def _patched_to_py(schema, defs=None):
+    # Guard against boolean schemas (e.g. additionalProperties: true)
+    if isinstance(schema, bool):
+        return "Any"
+    return _orig_to_py(schema, defs)
+
+_gcu._json_schema_to_python_type = _patched_to_py
 
 import argparse
 import os
