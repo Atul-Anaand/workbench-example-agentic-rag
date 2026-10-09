@@ -13,12 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+os.environ.setdefault("USER_AGENT", "project-agentic-rag/1.0 (+https://yourdomain)")
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
     WebBaseLoader,
     UnstructuredPDFLoader,
     TextLoader,
-    CSVLoader 
+    CSVLoader,
+    UnstructuredWordDocumentLoader,
+    UnstructuredPowerPointLoader,
+    UnstructuredExcelLoader,
+    UnstructuredHTMLLoader,
+    UnstructuredEmailLoader,
 )
 from langchain_community.vectorstores import Chroma
 import json
@@ -26,7 +34,6 @@ import urllib.request
 
 from typing import Any, Dict, List, Tuple, Union
 from urllib.parse import urlparse
-import os
 import shutil
 import mimetypes
 import time
@@ -201,11 +208,18 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
             ".pdf": UnstructuredPDFLoader,
             ".txt": TextLoader,
             ".md": TextLoader,
-            ".csv": CSVLoader
+            ".csv": CSVLoader,
+            ".docx": UnstructuredWordDocumentLoader,
+            ".doc": UnstructuredWordDocumentLoader,
+            ".pptx": UnstructuredPowerPointLoader,
+            ".xlsx": UnstructuredExcelLoader,
+            ".html": UnstructuredHTMLLoader,
+            ".htm": UnstructuredHTMLLoader,
+            ".eml": UnstructuredEmailLoader,
         }.get(ext)
 
         if loader_cls is None:
-            print(f"[Documents] ⚠ Skipping unsupported file type: {os.path.basename(fpath)} (supported: .pdf, .txt, .md, .csv)")
+            print(f"[Documents] ⚠ Skipping unsupported file type: {os.path.basename(fpath)} (supported: .pdf, .txt, .md, .csv, .docx, .pptx, .xlsx, .html, .eml)")
             continue
 
         try:

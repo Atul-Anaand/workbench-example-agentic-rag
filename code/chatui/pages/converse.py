@@ -884,7 +884,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                             with gr.TabItem("Files", id=1) as pdf_tab:
                                 docs_upload = gr.File(interactive=True, 
                                                           show_label=False, 
-                                                          file_types=[".pdf", ".txt", ".csv", ".md"], 
+                                                          file_types=[".pdf", ".txt", ".csv", ".md", ".docx", ".doc", ".pptx", ".xlsx", ".html", ".htm", ".eml"], 
                                                           file_count="multiple")
                                 docs_clear = gr.Button(value="Clear Context")
     
@@ -1347,9 +1347,12 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         
             IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
             AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".aac", ".opus")
+            DOC_EXTS   = (".pdf", ".txt", ".csv", ".md", ".docx", ".doc",
+                          ".pptx", ".xlsx", ".html", ".htm", ".eml")
         
             image_paths = []
             audio_paths = []
+            doc_paths   = []
             for f in files:
                 if isinstance(f, dict):
                     p = f.get("path") or ""
@@ -1363,6 +1366,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     image_paths.append(p)
                 elif n.endswith(AUDIO_EXTS):
                     audio_paths.append(p)
+                elif n.endswith(DOC_EXTS):
+                    doc_paths.append(p)
         
             # ---------- Image path ----------
             if image_paths:
@@ -1399,6 +1404,25 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 augmented_prompt = f"{prompt}\n\nAudio transcript:\n{transcript}"
                 yield from _my_build_stream(augmented_prompt, *rag_args)
         
+            # ---------- Document path ----------
+            elif doc_paths:
+                chat_history = rag_args[-1] if rag_args else []
+
+                print("")
+                print("[Documents] --------------------------------------------")
+                print(f"[Documents] Ingesting {len(doc_paths)} file(s) from chat + button")
+                for p in doc_paths:
+                    print(f"[Documents]   - {p}")
+
+                yield (gr.update(value={"text": "", "files": []}),
+                       chat_history + [[text or "[Document uploaded]", "Ingesting document(s) into context..."]],
+                       gr.update(show_label=False))
+
+                database.upload_files(doc_paths)
+
+                question = text or "Summarize the uploaded document."
+                yield from _my_build_stream(question, *rag_args)
+
             # ---------- Text-only path ----------
             else:
                 yield from _my_build_stream(text, *rag_args)
