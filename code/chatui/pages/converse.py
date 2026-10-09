@@ -266,6 +266,30 @@ def is_reasoning_model(model_name: str) -> bool:
     return any(kw in name for kw in REASONING_KEYWORDS)
 
 # V2.0: Analyze images via remote NGC vision model
+# V2.1: Local audio transcription via faster-whisper
+_WHISPER_MODEL_CACHE = {}
+
+def _get_whisper_model():
+    """Load (and cache) the faster-whisper small model on GPU."""
+    if "small" not in _WHISPER_MODEL_CACHE:
+        from faster_whisper import WhisperModel
+        print("[Whisper] Loading 'small' model on CUDA (this may take a moment)...")
+        _WHISPER_MODEL_CACHE["small"] = WhisperModel("small", device="cuda", compute_type="float16")
+        print("[Whisper] Model loaded.")
+    return _WHISPER_MODEL_CACHE["small"]
+
+
+def _transcribe_audio_with_whisper(audio_path: str, language: str = "en") -> str:
+    """Transcribe an audio file locally using faster-whisper."""
+    try:
+        model = _get_whisper_model()
+        segments, info = model.transcribe(audio_path, language=language, beam_size=5)
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        return text if text else "(no speech detected)"
+    except Exception as e:
+        return f"[Audio transcription failed: {e}]"
+
+
 def _analyze_image_with_vlm(image_path: str, question: str) -> str:
     """Send an image to a remote VLM for analysis."""
     import base64
@@ -376,8 +400,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     with gr.Column(scale=3, min_width=450):
                         msg = gr.MultimodalTextbox(
                             show_label=False,
-                            placeholder="Enter text or attach an image...",
-                            file_types=["image"],
+                            placeholder="Enter text or attach an image/audio...",
+                            file_types=["image", "audio", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm"],
                             file_count="multiple",
                             container=False,
                             interactive=True,
@@ -1313,14 +1337,19 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         
 # V2.0: Multimodal router - images to VLM, text to RAG pipeline
         def _multimodal_router(multimodal_value, *rag_args):
+            """Route text to RAG, images to VLM, audio to local Whisper."""
             if isinstance(multimodal_value, dict):
                 text = (multimodal_value.get("text") or "").strip()
                 files = multimodal_value.get("files") or []
             else:
                 text = str(multimodal_value or "").strip()
                 files = []
-
+        
+            IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
+            AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".aac", ".opus")
+        
             image_paths = []
+            audio_paths = []
             for f in files:
                 if isinstance(f, dict):
                     p = f.get("path") or ""
@@ -1330,27 +1359,52 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     n = f.lower()
                 else:
                     continue
-                if n.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                if n.endswith(IMAGE_EXTS):
                     image_paths.append(p)
-
+                elif n.endswith(AUDIO_EXTS):
+                    audio_paths.append(p)
+        
+            # ---------- Image path ----------
             if image_paths:
                 question = text or "Describe this image in detail."
                 chat_history = rag_args[-1] if rag_args else []
-
+        
                 print("")
                 print("[VLM] --------------------------------------------")
                 print("[VLM] Analyzing image: " + image_paths[0])
                 print("[VLM] Question: " + question)
-
+        
                 yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", "Analyzing image..."]], gr.update(show_label=False)
-
+        
                 result = _analyze_image_with_vlm(image_paths[0], question)
                 print("[VLM] Analysis delivered")
-
+        
                 yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", result]], gr.update(show_label=False)
+        
+            # ---------- Audio path ----------
+            elif audio_paths:
+                prompt = text or "Transcribe and analyze this audio."
+                chat_history = rag_args[-1] if rag_args else []
+        
+                print("")
+                print("[Whisper] --------------------------------------------")
+                print("[Whisper] Transcribing: " + audio_paths[0])
+        
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Audio uploaded]", "Transcribing audio locally..."]], gr.update(show_label=False)
+        
+                transcript = _transcribe_audio_with_whisper(audio_paths[0])
+                print("[Whisper] Transcript: " + transcript[:120] + ("..." if len(transcript) > 120 else ""))
+        
+                # Now feed the transcribed text through the RAG pipeline
+                augmented_prompt = f"{prompt}\n\nAudio transcript:\n{transcript}"
+                yield from _my_build_stream(augmented_prompt, *rag_args)
+        
+            # ---------- Text-only path ----------
             else:
                 yield from _my_build_stream(text, *rag_args)
-
+        
+        
+        
         _my_build_stream = functools.partial(_stream_predict, client, app)
 
         # Submit a sample query

@@ -1,3 +1,24 @@
+# V2.1: Preload CUDA libraries for faster-whisper on GPU
+# ctranslate2 needs libcublas.so.12 and libcudnn.so.9 from the nvidia-*-cu12 wheels
+# which aren't on the default search path. We inject them and preload by absolute path.
+import os as _os
+import ctypes as _ctypes
+_CUDA_LIB_DIRS = [
+    "/home/workbench/.local/lib/python3.10/site-packages/nvidia/cublas/lib",
+    "/home/workbench/.local/lib/python3.10/site-packages/nvidia/cudnn/lib",
+]
+_existing_ld = _os.environ.get("LD_LIBRARY_PATH", "")
+_os.environ["LD_LIBRARY_PATH"] = ":".join(
+    [d for d in _CUDA_LIB_DIRS if _os.path.isdir(d)] + ([_existing_ld] if _existing_ld else [])
+)
+for _d in _CUDA_LIB_DIRS:
+    for _name in ("libcublas.so.12", "libcudnn.so.9"):
+        _p = _os.path.join(_d, _name)
+        if _os.path.exists(_p):
+            try:
+                _ctypes.CDLL(_p, mode=_ctypes.RTLD_GLOBAL)
+            except Exception:
+                pass
 # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
