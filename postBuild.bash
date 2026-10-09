@@ -5,3 +5,4 @@
 # Note: This file may be removed if you don't need to use it
 sudo -E apt-get update && sudo -E apt-get install ffmpeg libsm6 libxext6 -y
 pip install --user pytest
+pip install --user gradio==4.44.1 fastapi==0.112.4 starlette==0.38.6 huggingface_hub==0.29.3

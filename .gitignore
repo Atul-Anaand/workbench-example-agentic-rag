@@ -62,5 +62,5 @@ code/output.log
 # Vim swap files
 *.swp
 *.swo
-.*.swp
-
+.*.swp*.bak.*
+*.bak
