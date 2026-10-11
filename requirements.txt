@@ -1,4 +1,4 @@
---index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--index-urlhttps://pypi.tuna.tsinghua.edu.cn/simple
 jupyterlab>3.0
 langchain-nvidia-ai-endpoints==0.3.7
 langchain-chroma==0.2.0
