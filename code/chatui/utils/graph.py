@@ -203,28 +203,33 @@ def generate(state):
 
 def grade_documents(state):
     """
-    Determines whether the retrieved documents are relevant to the question
-    If any document is not relevant, we will set a flag to run web search
+    Determines whether the retrieved documents are relevant to the question.
 
-    Args:
-        state (dict): The current graph state
+    If the LLM grader rejects all chunks, we KEEP THE BEST ONE rather than
+    triggering a web-search fallback. Rationale: when the user has uploaded
+    documents, the retriever has already ranked chunks by relevance — the
+    top-1 result is nearly always what the user wants. Rejecting it and
+    searching the web is worse than trusting the retriever's ranking.
 
-    Returns:
-        state (dict): Filtered out irrelevant documents and updated web_search state
+    The Hallucination Grader downstream still validates that any generated
+    answer is grounded in the retrieved context, so bad chunks won't
+    produce bad answers.
     """
 
     question = state["question"]
     documents = state["documents"]
     print(f"[Retrieval Grader] Grading {len(documents)} retrieved chunk(s) for relevance using {_model_desc(state, 'retrieval')}...")
 
-    # Score each doc
+    # Nothing to grade — fall back to web search
+    if not documents:
+        return {"documents": [], "question": question, "web_search": "Yes"}
+
     filtered_docs = []
-    web_search = "No"
     prompt = PromptTemplate(
         template=state["prompt_retrieval"],
         input_variables=["question", "document"],
     )
-    llm = nim.CustomChatOpenAI(custom_endpoint=state["nim_retrieval_ip"], 
+    llm = nim.CustomChatOpenAI(custom_endpoint=state["nim_retrieval_ip"],
                                port=state["nim_retrieval_port"] if len(state["nim_retrieval_port"]) > 0 else "8000",
                                model_name=state["nim_retrieval_id"] if len(state["nim_retrieval_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_retrieval_gpu_type"] if "nim_retrieval_gpu_type" in state else None,
@@ -238,8 +243,6 @@ def grade_documents(state):
         )
         return _validate_binary_score(score, "Retrieval Grader")
 
-    # Grading is I/O-bound and each document can be graded independently.
-    # Keep results in document order so downstream behavior remains deterministic.
     with ThreadPoolExecutor(max_workers=min(4, len(documents))) as executor:
         grades = list(executor.map(grade_document, documents))
 
@@ -248,11 +251,17 @@ def grade_documents(state):
             print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✓ relevant")
             filtered_docs.append(document)
         else:
-            print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✗ not relevant — discarded")
-    # We set a flag to indicate that we want to run web search if insufficient relevant docs found
-    web_search = "Yes" if len(filtered_docs) < 1 else "No"
+            print(f"[Retrieval Grader] Chunk {i + 1} of {len(documents)}: ✗ not relevant")
+
+    # Key change: if the grader rejected everything, keep the top-ranked chunk
+    # instead of triggering web search. The retriever's ranking is the
+    # primary signal — the grader is just a quality filter on top of it.
+    if not filtered_docs:
+        print(f"[Retrieval Grader] All chunks rejected — keeping top-ranked chunk (1 of {len(documents)})")
+        filtered_docs = [documents[0]]
+
     print(f"[Retrieval Grader] Kept {len(filtered_docs)} of {len(documents)} chunk(s)")
-    return {"documents": filtered_docs, "question": question, "web_search": web_search}
+    return {"documents": filtered_docs, "question": question, "web_search": "No"}
 
 
 def web_search(state):
