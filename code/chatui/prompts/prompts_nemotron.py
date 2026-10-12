@@ -36,7 +36,11 @@ Question to route: {question}
 """
 
 retrieval_prompt = """
-You are a grader assessing relevance of a retrieved document to a user question. Grade it as relevant if the document could plausibly contain information related to the user question — even if the exact keywords from the question don't appear verbatim. The goal is to filter out clearly erroneous retrievals, not to be stringent. When in doubt, grade as relevant.
+You are a grader assessing relevance of a retrieved document to a user question. The user has uploaded a document and wants an answer derived from it. Grade the retrieved chunk as RELEVANT unless it is completely unrelated to the question topic.
+
+IMPORTANT: The extracted text may not preserve formatting, tags, table structure, or field names from the original file. Do NOT reject a chunk just because a specific keyword (like "h1", "cell", "row", "column", "tag", or "table") from the question does not appear verbatim in the chunk. If the chunk plausibly came from the uploaded document and the question is about its content, grade it as relevant.
+
+When in doubt, grade as relevant. The downstream hallucination grader will catch genuinely bad matches.
 
 Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
 Your response format is non-negotiable: you must provide the binary score as a JSON with a single key 'score' and no preamble or explanation.
