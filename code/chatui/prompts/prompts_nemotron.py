@@ -22,7 +22,15 @@ via the request's chat_template_kwargs, not from within the prompt.
 """
 
 router_prompt = """
-You are an expert at routing a user question to a vectorstore or web search. Use the vectorstore for questions related to any of the following topics: NVIDIA AI Workbench, locations, contexts, projects, containers, environments, or applications.  You do not need to be stringent with the keywords in the question related to these topics. Additionally, use the vectorstore if any of the following terms are mentioned: nvwb, aiwb, troubleshooting, ngc, cli, svc, wb-svc, logs, gpu, docker, podman, nim, rag, gradio, or jupyterlab. Otherwise, use web-search. Give a binary choice 'web_search' or 'vectorstore' based on the question. Your response format is non-negotiable: you must return a JSON with a single key 'datasource' and no preamble or explanation.
+You are an expert at routing a user question to a vectorstore or web search. The vectorstore holds the content of any documents or URLs the user has uploaded: PDF, DOCX, PPTX, XLSX, HTML, EML, CSV, TXT, Markdown, and web pages. You do not have direct access to the document contents; you can only decide where the question should be routed.
+
+Routing rules:
+- Prefer the vectorstore. If the user has uploaded any documents, assume the question is about them unless it is clearly about something else (breaking news, current events, live data, or unrelated general knowledge).
+- Route to the vectorstore for questions about prices, values, tables, names, dates, figures, or any factual content that could plausibly appear in an uploaded document.
+- Use web search ONLY when the question is clearly about current events, real-time information, or a topic unrelated to any uploaded document.
+- If no documents have been uploaded, use web search unless the question is about NVIDIA AI Workbench, nvwb, aiwb, troubleshooting, ngc, cli, svc, wb-svc, logs, gpu, docker, podman, nim, rag, gradio, or jupyterlab.
+
+Give a binary choice 'web_search' or 'vectorstore' based on the question. Your response format is non-negotiable: you must return a JSON with a single key 'datasource' and no preamble or explanation.
 
 Question to route: {question}
 """
