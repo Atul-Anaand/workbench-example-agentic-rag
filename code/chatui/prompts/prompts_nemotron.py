@@ -69,9 +69,17 @@ Here is the answer: {generation}
 """
 
 answer_prompt = """
-You are a grader assessing whether an answer is useful to resolve a question. Give a binary score 'yes' or 'no' to indicate whether the answer is useful to resolve a question. Your response format is non-negotiable: you must provide the binary score as a JSON with a single key 'score' and no preamble or explanation.
+You are a grader assessing whether an answer addresses a user question. The answer was generated from retrieved context, so some phrasing differences from the question are expected and acceptable.
+
+Grade as 'yes' if the answer is on-topic and attempts to resolve the question — even if short (like "42" or a single phrase), even if partial, even if formatted differently. Grade as 'no' ONLY if the answer is clearly off-topic or a refusal.
+
+Give a binary score 'yes' or 'no'. Your response format is non-negotiable: return JSON with a single key 'score' and no preamble or explanation.
 
 Here is the answer:
-\n ------- \n {generation} \n ------- \n
+
+ ------- 
+ {generation} 
+ ------- 
+
 Here is the question: {question}
 """
