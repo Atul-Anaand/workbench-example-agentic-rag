@@ -36,11 +36,14 @@ Question to route: {question}
 """
 
 retrieval_prompt = """
-You are a grader assessing relevance of a retrieved document to a user question. If the document contains keywords related to the user question, grade it as relevant. It does not need to be a stringent test. The goal is to filter out erroneous retrievals. \n
-Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question. \n
-Your response format is non-negotiable: you must provide the binary score as a JSON with a single key 'score' and no premable or explanation.
+You are a grader assessing relevance of a retrieved document to a user question. Grade it as relevant if the document could plausibly contain information related to the user question — even if the exact keywords from the question don't appear verbatim. The goal is to filter out clearly erroneous retrievals, not to be stringent. When in doubt, grade as relevant.
 
-Here is the retrieved document: \n {document} \n
+Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.
+Your response format is non-negotiable: you must provide the binary score as a JSON with a single key 'score' and no preamble or explanation.
+
+Here is the retrieved document: 
+ {document} 
+
 Here is the user question: {question}
 """
 
