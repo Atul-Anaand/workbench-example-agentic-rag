@@ -98,6 +98,82 @@ class StructuredXLSXLoader:
         )]
 
 
+class StructuredDocxLoader:
+    """
+    DOCX loader that preserves heading hierarchy, paragraphs, lists, and
+    tables as markdown. Headings become "# text" markers, lists become
+    "- item" or "1. item", tables become pipe tables. Structure survives
+    so the LLM can reason about sections and hierarchy.
+    """
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def _heading_level(self, style_name: str):
+        if not style_name:
+            return None
+        s = style_name.lower()
+        if s.startswith("heading"):
+            parts = s.replace("heading", "").strip()
+            try:
+                return int(parts)
+            except ValueError:
+                return 1
+        return None
+
+    def load(self):
+        from docx import Document as DocxDocument
+        from langchain_core.documents import Document
+
+        doc = DocxDocument(self.file_path)
+        parts = []
+
+        for element in doc.element.body:
+            tag = element.tag.split("}")[-1]
+
+            if tag == "p":
+                para = next((p for p in doc.paragraphs if p._element is element), None)
+                if para is None:
+                    continue
+                text = para.text.strip()
+                if not text:
+                    continue
+                level = self._heading_level(para.style.name if para.style else "")
+                if level is not None:
+                    parts.append("#" * level + " " + text)
+                elif para.style and "List Bullet" in para.style.name:
+                    parts.append("- " + text)
+                elif para.style and "List Number" in para.style.name:
+                    parts.append("1. " + text)
+                else:
+                    parts.append(text)
+
+            elif tag == "tbl":
+                tbl = next((t for t in doc.tables if t._element is element), None)
+                if tbl is None:
+                    continue
+                rows = []
+                for row in tbl.rows:
+                    cells = [c.text.strip().replace("\n", " ") for c in row.cells]
+                    rows.append(cells)
+                if not rows:
+                    continue
+                ncols = max(len(r) for r in rows)
+                header = rows[0] + [""] * (ncols - len(rows[0]))
+                parts.append("| " + " | ".join(header) + " |")
+                parts.append("|" + "|".join(["---"] * ncols) + "|")
+                for r in rows[1:]:
+                    r = r + [""] * (ncols - len(r))
+                    parts.append("| " + " | ".join(r) + " |")
+                parts.append("")
+
+        body = "\n\n".join(parts) if parts else "(empty document)"
+        return [Document(
+            page_content=body,
+            metadata={"source": self.file_path, "format": "docx"},
+        )]
+
+
 class StructuredHTMLLoader:
     """
     HTML loader that preserves document structure as markdown.
@@ -339,8 +415,8 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
             ".txt": TextLoader,
             ".md": TextLoader,
             ".csv": CSVLoader,
-            ".docx": UnstructuredWordDocumentLoader,
-            ".doc": UnstructuredWordDocumentLoader,
+            ".docx": StructuredDocxLoader,
+            ".doc": StructuredDocxLoader,
             ".pptx": UnstructuredPowerPointLoader,
             ".xlsx": StructuredXLSXLoader,
             ".html": StructuredHTMLLoader,
