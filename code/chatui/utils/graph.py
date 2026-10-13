@@ -188,6 +188,23 @@ def retrieve(state):
     return {"documents": documents, "question": question}
 
 
+def format_context_with_sources(documents):
+    """
+    Format retrieved Documents into a single string with [Source: ...] labels.
+
+    Each chunk is prefixed with its source filename so the generator can cite
+    sources in its answer. Filename only (path is stripped) to keep the
+    citation human-readable.
+    """
+    import os
+    parts = []
+    for doc in documents:
+        source = doc.metadata.get("source", "unknown")
+        filename = os.path.basename(source) if source != "unknown" else "unknown"
+        parts.append(f"[Source: {filename}]\n{doc.page_content}")
+    return "\n\n---\n\n".join(parts)
+
+
 def generate(state):
     """
     Generate answer using RAG on retrieved documents
@@ -214,7 +231,8 @@ def generate(state):
                                gpu_count=state["nim_generator_gpu_count"] if "nim_generator_gpu_count" in state else None,
                                temperature=0.7) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0.7).bind(**_thinking_off_kwargs(state["generator_model_id"]))
     rag_chain = prompt | llm | StrOutputParser()
-    generation = rag_chain.invoke({"context": documents, "question": question})
+    context_with_sources = format_context_with_sources(documents)
+    generation = rag_chain.invoke({"context": context_with_sources, "question": question})
     print(f"[Generator] ✓ Draft answer generated ({len(generation)} characters)")
     return {"documents": documents, "question": question, "generation": generation}
 

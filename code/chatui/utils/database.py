@@ -416,7 +416,8 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
             ".md": TextLoader,
             ".csv": CSVLoader,
             ".docx": StructuredDocxLoader,
-            ".doc": StructuredDocxLoader,
+            # .doc (Word 97-2003) intentionally omitted — python-docx only reads .docx.
+            # Legacy .doc requires LibreOffice which is not installed in this container.
             ".pptx": UnstructuredPowerPointLoader,
             ".xlsx": StructuredXLSXLoader,
             ".html": StructuredHTMLLoader,
@@ -425,7 +426,7 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
         }.get(ext)
 
         if loader_cls is None:
-            print(f"[Documents] ⚠ Skipping unsupported file type: {os.path.basename(fpath)} (supported: .pdf, .txt, .md, .csv, .docx, .pptx, .xlsx, .html, .eml)")
+            print(f"[Documents] ⚠ Skipping unsupported file type: {os.path.basename(fpath)} (supported: .pdf, .txt, .md, .csv, .docx, .pptx, .xlsx, .html, .htm, .eml)")
             continue
 
         try:
