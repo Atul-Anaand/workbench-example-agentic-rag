@@ -40,6 +40,64 @@ import time
 
 
 
+class StructuredXLSXLoader:
+    """
+    XLSX loader that preserves sheet/row/column structure as markdown tables.
+
+    Each worksheet becomes a section with a "## Sheet: <name>" header followed
+    by a markdown table. Column letters are preserved in a companion line so
+    queries like "what is in cell B2?" remain answerable.
+    """
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def load(self):
+        from openpyxl import load_workbook
+        from openpyxl.utils import get_column_letter
+        from langchain_core.documents import Document
+
+        wb = load_workbook(self.file_path, data_only=True, read_only=True)
+        parts = []
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            rows = []
+            for row in ws.iter_rows(values_only=True):
+                rows.append([("" if c is None else str(c)) for c in row])
+
+            if not rows:
+                continue
+
+            parts.append(f"## Sheet: {sheet_name}")
+
+            # Detect widest row to define column count
+            ncols = max(len(r) for r in rows) if rows else 0
+            if ncols == 0:
+                continue
+
+            # Column letter reference line — makes "cell B2" queries resolvable
+            col_letters = [get_column_letter(i + 1) for i in range(ncols)]
+            parts.append("Columns: " + " | ".join(col_letters))
+
+            # First row as header, rest as data
+            header = rows[0] + [""] * (ncols - len(rows[0]))
+            parts.append("| " + " | ".join(header) + " |")
+            parts.append("|" + "|".join(["---"] * ncols) + "|")
+
+            for r in rows[1:]:
+                r = r + [""] * (ncols - len(r))
+                parts.append("| " + " | ".join(r) + " |")
+
+            parts.append("")  # blank line between sheets
+
+        body = "\n".join(parts).strip() if parts else "(empty workbook)"
+        return [Document(
+            page_content=body,
+            metadata={"source": self.file_path, "format": "xlsx"},
+        )]
+
+
 class StructuredHTMLLoader:
     """
     HTML loader that preserves document structure as markdown.
@@ -284,7 +342,7 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
             ".docx": UnstructuredWordDocumentLoader,
             ".doc": UnstructuredWordDocumentLoader,
             ".pptx": UnstructuredPowerPointLoader,
-            ".xlsx": UnstructuredExcelLoader,
+            ".xlsx": StructuredXLSXLoader,
             ".html": StructuredHTMLLoader,
             ".htm": StructuredHTMLLoader,
             ".eml": UnstructuredEmailLoader,
