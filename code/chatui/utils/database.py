@@ -40,6 +40,78 @@ import time
 
 
 
+class StructuredHTMLLoader:
+    """
+    HTML loader that preserves document structure as markdown.
+
+    Extracts headings (h1-h6), paragraphs, list items, and tables, emitting
+    them in document order with markdown markers (# for headings, - for list
+    items, | for tables). This keeps structural queries answerable — for
+    example "What text is in the h1?" — because the tag identity is preserved
+    as a markdown marker that both the retriever and the LLM can see.
+    """
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def load(self):
+        from bs4 import BeautifulSoup
+        from langchain_core.documents import Document
+
+        with open(self.file_path, "r", encoding="utf-8", errors="ignore") as f:
+            html = f.read()
+
+        soup = BeautifulSoup(html, "html.parser")
+        for t in soup(["script", "style", "noscript"]):
+            t.decompose()
+
+        parts = []
+        for element in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6",
+                                      "p", "li", "table"]):
+            # Skip inline elements inside tables — handled at table level
+            if element.name != "table" and element.find_parent("table"):
+                continue
+
+            if element.name.startswith("h"):
+                level = int(element.name[1])
+                text = element.get_text(strip=True)
+                if text:
+                    parts.append("#" * level + " " + text)
+
+            elif element.name == "p":
+                text = element.get_text(strip=True)
+                if text:
+                    parts.append(text)
+
+            elif element.name == "li":
+                text = element.get_text(strip=True)
+                if text:
+                    parts.append("- " + text)
+
+            elif element.name == "table":
+                rows = []
+                for tr in element.find_all("tr"):
+                    cells = [c.get_text(strip=True)
+                             for c in tr.find_all(["td", "th"])]
+                    if cells:
+                        rows.append(cells)
+                if rows:
+                    header = rows[0]
+                    parts.append("| " + " | ".join(header) + " |")
+                    parts.append("|" + "|".join(["---"] * len(header)) + "|")
+                    for row in rows[1:]:
+                        while len(row) < len(header):
+                            row.append("")
+                        parts.append("| " + " | ".join(row) + " |")
+
+        body = "\n\n".join(parts) if parts else "(empty document)"
+
+        return [Document(
+            page_content=body,
+            metadata={"source": self.file_path, "format": "html"},
+        )]
+
+
 # Local Ollama embedding configuration
 EMBEDDINGS_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
 OLLAMA_EMBED_URL = os.getenv(
@@ -213,8 +285,8 @@ def load_documents_from_files(file_paths: List[str]) -> List[Any]:
             ".doc": UnstructuredWordDocumentLoader,
             ".pptx": UnstructuredPowerPointLoader,
             ".xlsx": UnstructuredExcelLoader,
-            ".html": UnstructuredHTMLLoader,
-            ".htm": UnstructuredHTMLLoader,
+            ".html": StructuredHTMLLoader,
+            ".htm": StructuredHTMLLoader,
             ".eml": UnstructuredEmailLoader,
         }.get(ext)
 

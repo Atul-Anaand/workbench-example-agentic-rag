@@ -61,10 +61,18 @@ Answer:
 """
 
 hallucination_prompt = """
-You are a grader assessing whether an answer is grounded in and supported by a set of facts. Give a binary 'yes' or 'no' score to indicate whether the answer is grounded in and supported by a set of facts. Your response format is non-negotiable: you must provide the binary score as a JSON with a single key 'score' and no preamble or explanation.
+You are a grader assessing whether an answer is grounded in and supported by a set of facts. Grade as 'yes' if the answer's information can be found in or reasonably inferred from the provided facts — even if the answer is a single word, a short phrase, or a bare value like "42" or "Test HTML". Short answers are valid if their content appears in the facts.
+
+Grade as 'no' only if the answer contains information that is clearly not present in or derivable from the facts.
+
+Your response format is non-negotiable: return JSON with a single key 'score' and no preamble or explanation.
 
 Here are the facts:
-\n ------- \n {documents} \n ------- \n
+
+ ------- 
+ {documents} 
+ ------- 
+
 Here is the answer: {generation}
 """
 

@@ -42,6 +42,24 @@ class TavilyAPIError(Exception):
 NEMOTRON_NO_THINK = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
+def _thinking_off_kwargs(model_id: str) -> dict:
+    """
+    Return the model-family-specific kwargs that disable thinking.
+
+    - DeepSeek V4 family: top-level `reasoning_effort: "none"` (NVIDIA API docs).
+      DeepSeek V4.1 Flash defaults to effort="high" which times out the gateway
+      at 302s on every call; we force "none" for speed.
+    - Nemotron family: `chat_template_kwargs.enable_thinking = False`.
+    - Anything else: no binding (model default applies).
+    """
+    mid = (model_id or "").lower()
+    if "deepseek" in mid:
+        return {"reasoning_effort": "none"}
+    if "nemotron" in mid:
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+    return {}
+
+
 
 ### State
 
@@ -194,7 +212,7 @@ def generate(state):
                                model_name=state["nim_generator_id"] if len(state["nim_generator_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_generator_gpu_type"] if "nim_generator_gpu_type" in state else None,
                                gpu_count=state["nim_generator_gpu_count"] if "nim_generator_gpu_count" in state else None,
-                               temperature=0.7) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0.7).bind(**NEMOTRON_NO_THINK)
+                               temperature=0.7) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0.7).bind(**_thinking_off_kwargs(state["generator_model_id"]))
     rag_chain = prompt | llm | StrOutputParser()
     generation = rag_chain.invoke({"context": documents, "question": question})
     print(f"[Generator] ✓ Draft answer generated ({len(generation)} characters)")
@@ -234,7 +252,7 @@ def grade_documents(state):
                                model_name=state["nim_retrieval_id"] if len(state["nim_retrieval_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_retrieval_gpu_type"] if "nim_retrieval_gpu_type" in state else None,
                                gpu_count=state["nim_retrieval_gpu_count"] if "nim_retrieval_gpu_count" in state else None,
-                               temperature=0.7) if state["retrieval_use_nim"] else ChatNVIDIA(model=state["retrieval_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
+                               temperature=0.7) if state["retrieval_use_nim"] else ChatNVIDIA(model=state["retrieval_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["retrieval_model_id"]))
     retrieval_grader = prompt | llm | JsonOutputParser()
 
     def grade_document(document):
@@ -331,7 +349,7 @@ def route_question(state):
                                model_name=state["nim_router_id"] if len(state["nim_router_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_router_gpu_type"] if "nim_router_gpu_type" in state else None,
                                gpu_count=state["nim_router_gpu_count"] if "nim_router_gpu_count" in state else None,
-                               temperature=0.7) if state["router_use_nim"] else ChatNVIDIA(model=state["router_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
+                               temperature=0.7) if state["router_use_nim"] else ChatNVIDIA(model=state["router_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["router_model_id"]))
     question_router = prompt | llm | JsonOutputParser()
     source = question_router.invoke({"question": question})
     datasource = _validate_datasource(source)
@@ -397,7 +415,7 @@ def grade_generation_v_documents_and_question(state):
                                model_name=state["nim_hallucination_id"] if len(state["nim_hallucination_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_hallucination_gpu_type"] if "nim_hallucination_gpu_type" in state else None,
                                gpu_count=state["nim_hallucination_gpu_count"] if "nim_hallucination_gpu_count" in state else None,
-                               temperature=0.7) if state["hallucination_use_nim"] else ChatNVIDIA(model=state["hallucination_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
+                               temperature=0.7) if state["hallucination_use_nim"] else ChatNVIDIA(model=state["hallucination_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["hallucination_model_id"]))
     hallucination_grader = prompt | llm | JsonOutputParser()
 
     score = hallucination_grader.invoke(
@@ -415,7 +433,7 @@ def grade_generation_v_documents_and_question(state):
                                model_name=state["nim_answer_id"] if len(state["nim_answer_id"]) > 0 else "meta/llama-3.1-8b-instruct",
                                gpu_type=state["nim_answer_gpu_type"] if "nim_answer_gpu_type" in state else None,
                                gpu_count=state["nim_answer_gpu_count"] if "nim_answer_gpu_count" in state else None,
-                               temperature=0.7) if state["answer_use_nim"] else ChatNVIDIA(model=state["answer_model_id"], temperature=0).bind(**NEMOTRON_NO_THINK)
+                               temperature=0.7) if state["answer_use_nim"] else ChatNVIDIA(model=state["answer_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["answer_model_id"]))
     answer_grader = prompt | llm | JsonOutputParser()
     
     if grade == "yes":

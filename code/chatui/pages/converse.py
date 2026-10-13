@@ -81,6 +81,12 @@ LOCAL_MODELS = [
 # Model identifiers with prefix
 NANO = "nvidia/nemotron-3-nano-30b-a3b"
 SUPER = "nvidia/nemotron-3-super-120b-a12b"
+# DeepSeek V4.1 Flash was evaluated but reverted: on the public NIM
+# endpoint, its reasoning phase could not be disabled (correct parameter
+# format confirmed; endpoint still times out at 90s+). Kept here for
+# future reference if the endpoint performance improves.
+# GENERATOR_MODEL = "deepseek-ai/deepseek-v4.1-flash"
+GENERATOR_MODEL = SUPER
 ULTRA = "nvidia/nemotron-3-ultra-550b-a55b"
 
 # check if the internal API is set
@@ -659,7 +665,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                     generator_mode_banner = gr.Markdown(value="💻 **Using API Endpoint**", elem_classes=["mode-banner"])
                                     with gr.TabItem("API Endpoints", id=0) as generator_api:
                                         model_generator = gr.Dropdown(model_list, 
-                                                                    value=SUPER,
+                                                                    value=GENERATOR_MODEL,
                                                                     label="Select a Model",
                                                                     elem_id="rag-inputs", 
                                                                     interactive=True)
