@@ -1809,9 +1809,21 @@ def _stream_predict(
         try:
             actions = {}
             config = RunnableConfig(recursion_limit=RECURSION_LIMIT)
+
+            # Map graph node names to user-facing progress messages
+            stage_messages = {
+                "retrieve": "🔍 Searching your documents...",
+                "grade_documents": "✅ Checking document relevance...",
+                "websearch": "🌐 Searching the web...",
+                "generate": "✍️ Generating answer...",
+            }
+
             for output in app.stream(inputs, config=config):
                 actions.update(output)
-                yield gr.update(value={"text": "", "files": []}), chat_history + [[question, "Working on getting you the best answer..."]], gr.update(value=actions)
+                node_name = next(iter(output.keys()), "")
+                stage_msg = stage_messages.get(node_name, "Working on getting you the best answer...")
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[question, stage_msg]], gr.update(value=actions)
+                time.sleep(0.4)  # force Gradio to render each stage
                 for key, value in output.items():
                     final_value = value
             print("[Query] ✓ Response delivered to the chat window")
