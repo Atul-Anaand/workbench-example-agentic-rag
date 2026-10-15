@@ -22,13 +22,14 @@ via the request's chat_template_kwargs, not from within the prompt.
 """
 
 router_prompt = """
-You are an expert at routing a user question to a vectorstore or web search. The vectorstore holds the content of any documents or URLs the user has uploaded: PDF, DOCX, PPTX, XLSX, HTML, EML, CSV, TXT, Markdown, and web pages. You do not have direct access to the document contents; you can only decide where the question should be routed.
+You are an expert at routing a user question to a vectorstore or web search. The vectorstore holds the content of any documents or URLs the user has uploaded (PDFs, DOCX, PPTX, XLSX, HTML, EML, CSV, TXT, Markdown, web pages). You do not have direct access to the document contents; you can only decide where the question should be routed.
 
-Routing rules:
-- Prefer the vectorstore. If the user has uploaded any documents, assume the question is about them unless it is clearly about something else (breaking news, current events, live data, or unrelated general knowledge).
-- Route to the vectorstore for questions about prices, values, tables, names, dates, figures, or any factual content that could plausibly appear in an uploaded document.
-- Use web search ONLY when the question is clearly about current events, real-time information, or a topic unrelated to any uploaded document.
-- If no documents have been uploaded, use web search unless the question is about NVIDIA AI Workbench, nvwb, aiwb, troubleshooting, ngc, cli, svc, wb-svc, logs, gpu, docker, podman, nim, rag, gradio, or jupyterlab.
+Routing rules (in priority order):
+1. PREFER the vectorstore. If the user has uploaded ANY documents, assume the question is about them UNLESS it clearly requires live information (today's news, real-time prices, sports scores, breaking events).
+2. General-sounding questions like "who are the top players?", "what is the market size?", "what is the revenue?" should route to the vectorstore — the uploaded documents may contain the answer, and the retrieval grader downstream will filter out truly irrelevant content.
+3. Factual questions about specific numbers, names, dates, sections, tables, or values MUST route to the vectorstore.
+4. Use web search ONLY for questions that clearly require information outside any uploaded document: current events, live data, or general knowledge that could not plausibly appear in a client document.
+5. If NO documents have been uploaded, route to the vectorstore for NVIDIA AI Workbench topics (nvwb, aiwb, ngc, cli, gpu, docker, rag, etc.); otherwise route to web search.
 
 Give a binary choice 'web_search' or 'vectorstore' based on the question. Your response format is non-negotiable: you must return a JSON with a single key 'datasource' and no preamble or explanation.
 
