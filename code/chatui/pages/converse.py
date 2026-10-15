@@ -893,6 +893,10 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                                           file_types=[".pdf", ".txt", ".csv", ".md", ".docx", ".doc", ".pptx", ".xlsx", ".html", ".htm", ".eml"], 
                                                           file_count="multiple")
                                 docs_clear = gr.Button(value="Clear Context")
+                                context_files_display = gr.Markdown(
+                                    value="_No documents in context._",
+                                    elem_id="context-files-panel",
+                                )
     
                     # Fourth tab item is for the actions output console. 
                     with gr.TabItem("Monitor", id=3) as console_settings:
@@ -1170,6 +1174,30 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
         
         """ These helper functions upload and clear the documents and webpages to/from the ChromaDB. """
 
+        def _list_context_files():
+            """Read Chroma and return a markdown summary of loaded files."""
+            import os
+            from collections import Counter
+            try:
+                vs = database.Chroma(
+                    collection_name="rag-chroma",
+                    embedding_function=database.OllamaEmbeddings(),
+                    persist_directory="/project/data",
+                )
+                data = vs.get()
+                if not data["ids"]:
+                    return "_No documents in context._"
+                sources = Counter(m.get("source", "?") for m in data["metadatas"])
+                out = [f"**Documents in context ({len(sources)}):**", ""]
+                for src, count in sources.most_common():
+                    name = os.path.basename(src) if src != "?" else "unknown"
+                    suffix = "chunk" if count == 1 else "chunks"
+                    out.append(f"- `{name}` — {count} {suffix}")
+                return chr(10).join(out)
+            except Exception as e:
+                return f"_Could not read context: {e}_"
+
+
         def _upload_documents_files(files, progress=gr.Progress()):
             progress(0.25, desc="Initializing Task")
             time.sleep(0.75)
@@ -1181,6 +1209,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 url_docs_clear: gr.update(value="Clear Docs", variant="secondary", interactive=True),
                 docs_clear: gr.update(value="Clear Docs", variant="secondary", interactive=True),
                 agentic_flow: gr.update(visible=True),
+                context_files_display: gr.update(value=_list_context_files()),
+                docs_upload: gr.update(value=None),
             }
 
         def _upload_documents(docs: str, progress=gr.Progress()):
@@ -1219,12 +1249,13 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 docs_upload: gr.update(value=None),
                 docs_clear: gr.update(value="Context Cleared", variant="primary", interactive=False),
                 agentic_flow: gr.update(visible=True),
+                context_files_display: gr.update(value="_No documents in context._"),
             }
 
         url_docs_upload.click(_upload_documents, [url_docs], [url_docs_upload, url_docs_clear, docs_clear, agentic_flow])
-        url_docs_clear.click(_clear_documents, [], [url_docs_upload, url_docs_clear, docs_upload, docs_clear, agentic_flow])
-        docs_upload.upload(_upload_documents_files, [docs_upload], [url_docs_clear, docs_clear, agentic_flow])
-        docs_clear.click(_clear_documents, [], [url_docs_upload, url_docs_clear, docs_upload, docs_clear, agentic_flow])
+        url_docs_clear.click(_clear_documents, [], [url_docs_upload, url_docs_clear, docs_upload, docs_clear, agentic_flow, context_files_display])
+        docs_upload.upload(_upload_documents_files, [docs_upload], [url_docs_clear, docs_clear, agentic_flow, context_files_display, docs_upload])
+        docs_clear.click(_clear_documents, [], [url_docs_upload, url_docs_clear, docs_upload, docs_clear, agentic_flow, context_files_display])
 
         """ These helper functions set state and prompts when either the NIM or API Endpoint tabs are selected. """
         
