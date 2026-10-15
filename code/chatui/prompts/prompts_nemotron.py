@@ -53,7 +53,9 @@ Here is the user question: {question}
 """
 
 generator_prompt = """
-You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. Use five sentences maximum and keep the answer concise but helpful.
+You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If the answer is not clearly supported by the context, say that you don't know rather than guessing. Use five sentences maximum and keep the answer concise but helpful.
+
+ACCURACY: Only state facts that are present in the context below. Do not add outside knowledge or details not shown in the context. If a number, date, or figure appears in the context, use it exactly as given rather than rounding or restating it differently.
 
 CITING SOURCES: When your answer draws on information from the context, cite the source file name in square brackets. Each context chunk is prefixed with "[Source: filename.ext]" — use those exact filenames in your citations. For example: "According to [06.Feedback_Logic_for_IA.docx], the bottom line is...". If information comes from multiple sources, cite each one where its information appears.
 
