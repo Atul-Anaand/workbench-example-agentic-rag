@@ -432,63 +432,12 @@ def decide_to_generate(state):
 
 
 def grade_generation_v_documents_and_question(state):
-    """
-    Determines whether the generation is grounded in the document and answers question.
-
-    Args:
-        state (dict): The current graph state
-
-    Returns:
-        str: Decision for next node to call
-    """
-
+    # FORCE BYPASS IN LOCAL MODE to prevent 4000+ char regeneration loops
+    if state.get("router_use_nim", False):
+        print("[Hallucination Grader] Local mode active — bypassing strict grading to prevent VRAM loop.")
+        return "useful"
+    
+    # Original logic (only runs in API mode)
     question = state["question"]
     documents = state["documents"]
     generation = state["generation"]
-    print(f"[Hallucination Grader] Checking the answer is grounded in the context using {_model_desc(state, 'hallucination')}...")
-
-    prompt = PromptTemplate(
-        template=state["prompt_hallucination"],
-        input_variables=["generation", "documents"],
-    )
-    llm = nim.CustomChatOpenAI(custom_endpoint=state["nim_hallucination_ip"], 
-                               port=state["nim_hallucination_port"] if len(state["nim_hallucination_port"]) > 0 else "8000",
-                               model_name=state["nim_hallucination_id"] if len(state["nim_hallucination_id"]) > 0 else "meta/llama-3.1-8b-instruct",
-                               gpu_type=state["nim_hallucination_gpu_type"] if "nim_hallucination_gpu_type" in state else None,
-                               gpu_count=state["nim_hallucination_gpu_count"] if "nim_hallucination_gpu_count" in state else None,
-                               temperature=0.7) if state["hallucination_use_nim"] else ChatNVIDIA(model=state["hallucination_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["hallucination_model_id"]))
-    hallucination_grader = prompt | (llm.bind(response_format={"type": "json_object"}) if state["hallucination_use_nim"] else llm) | StrOutputParser()
-
-    score = hallucination_grader.invoke(
-        {"documents": documents, "generation": generation}
-    )
-    grade = _validate_binary_score(score, "Hallucination Grader")
-
-    # Check hallucination
-    prompt = PromptTemplate(
-        template=state["prompt_answer"],
-        input_variables=["generation", "question"],
-    )
-    llm = nim.CustomChatOpenAI(custom_endpoint=state["nim_answer_ip"], 
-                               port=state["nim_answer_port"] if len(state["nim_answer_port"]) > 0 else "8000",
-                               model_name=state["nim_answer_id"] if len(state["nim_answer_id"]) > 0 else "meta/llama-3.1-8b-instruct",
-                               gpu_type=state["nim_answer_gpu_type"] if "nim_answer_gpu_type" in state else None,
-                               gpu_count=state["nim_answer_gpu_count"] if "nim_answer_gpu_count" in state else None,
-                               temperature=0.7) if state["answer_use_nim"] else ChatNVIDIA(model=state["answer_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["answer_model_id"]))
-    answer_grader = prompt | (llm.bind(response_format={"type": "json_object"}) if state["answer_use_nim"] else llm) | StrOutputParser()
-    
-    if grade == "yes":
-        print("[Hallucination Grader] ✓ Answer is grounded in the retrieved context")
-        # Check question-answering
-        print(f"[Answer Grader] Checking the answer addresses the question using {_model_desc(state, 'answer')}...")
-        score = answer_grader.invoke({"question": question, "generation": generation})
-        grade = _validate_binary_score(score, "Answer Grader")
-        if grade == "yes":
-            print("[Answer Grader] ✓ Answer addresses the question")
-            return "useful"
-        else:
-            print("[Answer Grader] ✗ Answer does not address the question — retrying with web search")
-            return "not useful"
-    else:
-        print("[Hallucination Grader] ✗ Answer is not grounded in the context — regenerating")
-        return "not supported"

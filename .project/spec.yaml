@@ -142,3 +142,7 @@ execution:
           target: /nvwb-shared-volume/
           description: ""
           options: volumeName=nvwb-shared-volume
+        - type: host
+          target: /output_local/
+          description: G Drive Output Sync
+          options: ""

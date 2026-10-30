@@ -1842,9 +1842,9 @@ def _stream_predict(
             import datetime
             import os
             try:
-                os.makedirs("/project/output_local", exist_ok=True)
+                os.makedirs("/output_local", exist_ok=True)
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_path = f"/project/output_local/Consulting_Report_{timestamp}.md"
+                report_path = f"/output_local/Consulting_Report_{timestamp}.md"
                 with open(report_path, "w", encoding="utf-8") as rf:
                     rf.write(final_value["generation"])
                 print(f"[Output] ✓ Report successfully saved to {report_path}")

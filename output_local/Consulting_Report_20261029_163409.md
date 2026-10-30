@@ -1,0 +1,2 @@
+### 1. Executive Summary
+The inbound warehouse data provided for July, August, and September 2026 shows fluctuating daily vehicle flows with distinct variations in backlog levels across the three months. [Last 3 months Inbond Details.xlsx] indicates that Ginned lines frequently exceed Packed lines on operational days, suggesting a consistent lag in the put-away

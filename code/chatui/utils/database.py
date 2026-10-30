@@ -320,21 +320,14 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", DEFAULT_CHUNK_SIZE))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", DEFAULT_CHUNK_OVERLAP))
 
 
-# Adding nltk data
-import nltk
-
-def download_nltk_if_missing():
-    try:
-        nltk.data.find('tokenizers/punkt')
-    except LookupError:
-        nltk.download('punkt')
-
-    try:
-        nltk.data.find('taggers/averaged_perceptron_tagger')
-    except LookupError:
-        nltk.download('averaged_perceptron_tagger')
-
-download_nltk_if_missing()
+# NLTK download bypassed for faster startup (not used by RecursiveCharacterTextSplitter)
+# import nltk
+# def download_nltk_if_missing():
+#     try:
+#         nltk.data.find('tokenizers/punkt')
+#     except LookupError:
+#         nltk.download('punkt')
+# download_nltk_if_missing()
 
     
 # nltk.download("punkt")
