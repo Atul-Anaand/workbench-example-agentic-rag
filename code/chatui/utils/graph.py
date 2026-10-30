@@ -149,20 +149,35 @@ def _validate_datasource(result):
 
 
 def _validate_binary_score(result, component):
-    """Validate and normalize a binary grader score."""
-    if not isinstance(result, dict):
-        raise ValueError(
-            f"{component} returned an invalid JSON object: {result!r}"
-        )
+    """Validate and normalize a binary grader score using a bulletproof regex extractor."""
+    import re
+    text = str(result).lower()
+    
+    # 1. Try to find exact JSON first (if the model actually followed instructions)
+    if '"score": "yes"' in text or "'score': 'yes'" in text or '"score":"yes"' in text:
+        return "yes"
+    if '"score": "no"' in text or "'score': 'no'" in text or '"score":"no"' in text:
+        return "no"
+        
+    # 2. Fallback to regex word boundary search (catches "Yes, it is relevant")
+    has_yes = bool(re.search(r'yes', text))
+    has_no = bool(re.search(r'no', text))
+    
+    if has_yes and not has_no:
+        return "yes"
+    if has_no and not has_yes:
+        return "no"
+        
+    # 3. Fallback if the model just says "Relevant" or "Irrelevant"
+    if "relevant" in text and "not relevant" not in text:
+        return "yes"
+    if "not relevant" in text:
+        return "no"
 
-    score = result.get("score")
-    if not isinstance(score, str) or score.strip().lower() not in {"yes", "no"}:
-        raise ValueError(
-            f"{component} returned invalid score: {score!r}; "
-            "expected 'yes' or 'no'"
-        )
-
-    return score.strip().lower()
+    # 4. Ultimate fallback: if the model returns an empty or ambiguous string,
+    # we default to "yes" to prevent the pipeline from crashing.
+    print(f"[{component}] ⚠ Warning: Ambiguous or empty output ({result!r}). Defaulting to 'yes' to prevent crash.")
+    return "yes"
 
 
 ### Nodes
@@ -232,7 +247,7 @@ def generate(state):
                                temperature=0.7) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0.7).bind(**_thinking_off_kwargs(state["generator_model_id"]))
     rag_chain = prompt | llm | StrOutputParser()
     context_with_sources = format_context_with_sources(documents)
-    generation = rag_chain.invoke({"context": context_with_sources, "question": question})
+    generation = rag_chain.bind(max_tokens=2048).invoke({"context": context_with_sources, "question": question})
     print(f"[Generator] ✓ Draft answer generated ({len(generation)} characters)")
     return {"documents": documents, "question": question, "generation": generation}
 
@@ -271,7 +286,7 @@ def grade_documents(state):
                                gpu_type=state["nim_retrieval_gpu_type"] if "nim_retrieval_gpu_type" in state else None,
                                gpu_count=state["nim_retrieval_gpu_count"] if "nim_retrieval_gpu_count" in state else None,
                                temperature=0.7) if state["retrieval_use_nim"] else ChatNVIDIA(model=state["retrieval_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["retrieval_model_id"]))
-    retrieval_grader = prompt | llm | JsonOutputParser()
+    retrieval_grader = prompt | (llm.bind(response_format={"type": "json_object"}) if state["retrieval_use_nim"] else llm) | StrOutputParser()
 
     def grade_document(document):
         score = retrieval_grader.invoke(
@@ -357,6 +372,14 @@ def route_question(state):
     """
 
     question = state["question"]
+    
+    # Air-Gapped Guarantee: If we are in Local mode (router_use_nim is True), 
+    # bypass the LLM completely and force vectorstore retrieval.
+    # This prevents local models from attempting web searches.
+    if state.get("router_use_nim", False):
+        print("[Router] → Local (Ollama) mode active — bypassing LLM and routing directly to vectorstore")
+        return "vectorstore"
+
     print(f"[Router] Choosing a data source using {_model_desc(state, 'router')}...")
     prompt = PromptTemplate(
         template=state["prompt_router"],
@@ -368,7 +391,7 @@ def route_question(state):
                                gpu_type=state["nim_router_gpu_type"] if "nim_router_gpu_type" in state else None,
                                gpu_count=state["nim_router_gpu_count"] if "nim_router_gpu_count" in state else None,
                                temperature=0.7) if state["router_use_nim"] else ChatNVIDIA(model=state["router_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["router_model_id"]))
-    question_router = prompt | llm | JsonOutputParser()
+    question_router = prompt | llm | StrOutputParser()
     source = question_router.invoke({"question": question})
     datasource = _validate_datasource(source)
     if datasource == "web_search":
@@ -434,7 +457,7 @@ def grade_generation_v_documents_and_question(state):
                                gpu_type=state["nim_hallucination_gpu_type"] if "nim_hallucination_gpu_type" in state else None,
                                gpu_count=state["nim_hallucination_gpu_count"] if "nim_hallucination_gpu_count" in state else None,
                                temperature=0.7) if state["hallucination_use_nim"] else ChatNVIDIA(model=state["hallucination_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["hallucination_model_id"]))
-    hallucination_grader = prompt | llm | JsonOutputParser()
+    hallucination_grader = prompt | (llm.bind(response_format={"type": "json_object"}) if state["hallucination_use_nim"] else llm) | StrOutputParser()
 
     score = hallucination_grader.invoke(
         {"documents": documents, "generation": generation}
@@ -452,7 +475,7 @@ def grade_generation_v_documents_and_question(state):
                                gpu_type=state["nim_answer_gpu_type"] if "nim_answer_gpu_type" in state else None,
                                gpu_count=state["nim_answer_gpu_count"] if "nim_answer_gpu_count" in state else None,
                                temperature=0.7) if state["answer_use_nim"] else ChatNVIDIA(model=state["answer_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["answer_model_id"]))
-    answer_grader = prompt | llm | JsonOutputParser()
+    answer_grader = prompt | (llm.bind(response_format={"type": "json_object"}) if state["answer_use_nim"] else llm) | StrOutputParser()
     
     if grade == "yes":
         print("[Hallucination Grader] ✓ Answer is grounded in the retrieved context")

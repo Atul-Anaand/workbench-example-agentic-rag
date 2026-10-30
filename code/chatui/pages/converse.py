@@ -57,36 +57,17 @@ LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "true").lower() in {
 }
 LOCAL_LLM_HOST = os.getenv("LOCAL_LLM_HOST", "host.docker.internal")
 LOCAL_LLM_PORT = os.getenv("LOCAL_LLM_PORT", "11434")
-LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "deepseek-r1:32b")
+LOCAL_LLM_MODEL = "qwen3.5:9b"
+LOCAL_GRADER_MODEL = "qwen3.5:9b"
 
 # List of local Ollama models for the dropdown
-LOCAL_MODELS = [
-    "nemotron-mini:4b",
-    "business-copilot-gemma3-27b-test:latest",
-    "gemma3:27b",
-    "phi4:14b",
-    "qwen2.5:32b-instruct-q4_K_M",
-    "qwen2.5-coder:7b",
-    "qwen3:14b",
-    "deepseek-r1:14b",
-    "qwen3.5:9b",
-    "mistral-nemo:12b",
-    "deepseek-r1:32b",
-    "qwen2.5:14b",
-    "llama3:latest",
-    "deepseek-r1:32b-qwen-distill-q4_K_M"
-]
+LOCAL_MODELS = ["qwen3.5:9b", "gemma4:12b", "llama3.2-vision:11b", "alpha-route", "nemotron-mini:4b"]
 
 
 # Model identifiers with prefix
 NANO = "nvidia/nemotron-3-nano-30b-a3b"
-SUPER = "nvidia/nemotron-3-super-120b-a12b"
-# DeepSeek V4.1 Flash was evaluated but reverted: on the public NIM
-# endpoint, its reasoning phase could not be disabled (correct parameter
-# format confirmed; endpoint still times out at 90s+). Kept here for
-# future reference if the endpoint performance improves.
-# GENERATOR_MODEL = "deepseek-ai/deepseek-v4.1-flash"
-GENERATOR_MODEL = SUPER
+SUPER = "nvidia/llama-3.1-nemotron-70b-instruct"
+GENERATOR_MODEL = "nvidia/llama-3.1-nemotron-70b-instruct"
 ULTRA = "nvidia/nemotron-3-ultra-550b-a55b"
 
 # check if the internal API is set
@@ -406,8 +387,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                     with gr.Column(scale=3, min_width=450):
                         msg = gr.MultimodalTextbox(
                             show_label=False,
-                            placeholder="Enter text or attach an image/audio...",
-                            file_types=["image", "audio", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm"],
+                            placeholder="Enter text or attach a prompt (.md), image, or audio...",
+                            file_types=["image", "audio", ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".md", ".txt"],
                             file_count="multiple",
                             container=False,
                             interactive=True,
@@ -415,6 +396,10 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                     with gr.Column(scale=1, min_width=150):
                         _ = gr.ClearButton([msg, chatbot], value="Clear Chat History")
+
+                # Download Report Row
+                with gr.Row():
+                    download_file = gr.File(label="Download Latest Report", interactive=False)
 
                 # Sample questions that users can click on to use
                 with gr.Row(equal_height=True):
@@ -566,7 +551,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                             )
                                         nim_router_id = gr.Dropdown(
                                             choices=LOCAL_MODELS,
-                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
+                                            value=LOCAL_GRADER_MODEL,
                                             label=HOST_MODEL,
                                             info="Select a local Ollama model",
                                             elem_id="rag-inputs",
@@ -636,7 +621,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                             )
                                         nim_retrieval_id = gr.Dropdown(
                                             choices=LOCAL_MODELS,
-                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
+                                            value=LOCAL_GRADER_MODEL,
                                             label=HOST_MODEL,
                                             info="Select a local Ollama model",
                                             elem_id="rag-inputs",
@@ -705,7 +690,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                             )
                                         nim_generator_id = gr.Dropdown(
                                             choices=LOCAL_MODELS,
-                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
+                                            value=LOCAL_LLM_MODEL,
                                             label=HOST_MODEL,
                                             info="Select a local Ollama model",
                                             elem_id="rag-inputs",
@@ -774,7 +759,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                             )
                                         nim_hallucination_id = gr.Dropdown(
                                             choices=LOCAL_MODELS,
-                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
+                                            value=LOCAL_GRADER_MODEL,
                                             label=HOST_MODEL,
                                             info="Select a local Ollama model",
                                             elem_id="rag-inputs",
@@ -843,7 +828,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                             )
                                         nim_answer_id = gr.Dropdown(
                                             choices=LOCAL_MODELS,
-                                            value=LOCAL_LLM_MODEL if LOCAL_LLM_MODEL in LOCAL_MODELS else LOCAL_MODELS[0],
+                                            value=LOCAL_GRADER_MODEL,
                                             label=HOST_MODEL,
                                             info="Select a local Ollama model",
                                             elem_id="rag-inputs",
@@ -1406,6 +1391,31 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 elif n.endswith(DOC_EXTS):
                     doc_paths.append(p)
         
+            # ---------- Document Prompt Path (.md / .txt) ----------
+            DOC_EXTS = (".md", ".txt")
+            doc_prompts = []
+            for f in files:
+                if isinstance(f, dict):
+                    p = f.get("path") or ""
+                    n = (f.get("orig_name") or f.get("name") or "").lower()
+                elif isinstance(f, str):
+                    p = f
+                    n = f.lower()
+                else:
+                    continue
+                
+                if n.endswith(DOC_EXTS):
+                    try:
+                        with open(p, 'r', encoding='utf-8') as doc_file:
+                            doc_prompts.append(doc_file.read())
+                    except Exception as e:
+                        print(f"[Prompt] Failed to read {n}: {e}")
+
+            # If we found .md/.txt files, append their text to the user's message
+            if doc_prompts:
+                text += "\n\n=== STRICT INSTRUCTIONS ===\n" + "\n".join(doc_prompts)
+                print(f"[Prompt] Attached {len(doc_prompts)} instruction file(s) directly to the prompt.")
+
             # ---------- Image path ----------
             if image_paths:
                 question = text or "Describe this image in detail."
@@ -1416,12 +1426,12 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 print("[VLM] Analyzing image: " + image_paths[0])
                 print("[VLM] Question: " + question)
         
-                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", "Analyzing image..."]], gr.update(show_label=False)
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", "Analyzing image..."]], gr.update(show_label=False), gr.update(value=None)
         
                 result = _analyze_image_with_vlm(image_paths[0], question)
                 print("[VLM] Analysis delivered")
         
-                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", result]], gr.update(show_label=False)
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Image uploaded]", result]], gr.update(show_label=False), gr.update(value=None)
         
             # ---------- Audio path ----------
             elif audio_paths:
@@ -1432,7 +1442,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 print("[Whisper] --------------------------------------------")
                 print("[Whisper] Transcribing: " + audio_paths[0])
         
-                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Audio uploaded]", "Transcribing audio locally..."]], gr.update(show_label=False)
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[text or "[Audio uploaded]", "Transcribing audio locally..."]], gr.update(show_label=False), gr.update(value=None)
         
                 transcript = _transcribe_audio_with_whisper(audio_paths[0])
                 print("[Whisper] Transcript: " + transcript[:120] + ("..." if len(transcript) > 120 else ""))
@@ -1453,7 +1463,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
 
                 yield (gr.update(value={"text": "", "files": []}),
                        chat_history + [[text or "[Document uploaded]", "Ingesting document(s) into context..."]],
-                       gr.update(show_label=False))
+                       gr.update(show_label=False), gr.update(value=None))
 
                 database.upload_files(doc_paths)
 
@@ -1501,7 +1511,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_retrieval_id,
                                nim_hallucination_id,
                                nim_answer_id,
-                               chatbot], [msg, chatbot, actions]
+                               chatbot], [msg, chatbot, actions, download_file]
         )
 
         sample_query_2.click(
@@ -1536,7 +1546,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_retrieval_id,
                                nim_hallucination_id,
                                nim_answer_id,
-                               chatbot], [msg, chatbot, actions]
+                               chatbot], [msg, chatbot, actions, download_file]
         )
 
         sample_query_3.click(
@@ -1571,7 +1581,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_retrieval_id,
                                nim_hallucination_id,
                                nim_answer_id,
-                               chatbot], [msg, chatbot, actions]
+                               chatbot], [msg, chatbot, actions, download_file]
         )
 
         sample_query_4.click(
@@ -1606,7 +1616,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_retrieval_id,
                                nim_hallucination_id,
                                nim_answer_id,
-                               chatbot], [msg, chatbot, actions]
+                               chatbot], [msg, chatbot, actions, download_file]
         )
         
         msg.submit(
@@ -1641,7 +1651,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                                nim_retrieval_id,
                                nim_hallucination_id,
                                nim_answer_id,
-                               chatbot], [msg, chatbot, actions]
+                               chatbot], [msg, chatbot, actions, download_file]
         )
 
         # V1.7: Mode selector change handler
@@ -1802,7 +1812,7 @@ def _stream_predict(
               "answer_use_nim": answer_use_nim}
     
     if not valid_input(question):
-        yield gr.update(value={"text": "", "files": []}), chat_history + [[str(question), "*** ERR: Unable to process query. Query cannot be empty. ***"]], gr.update(show_label=False)
+        yield gr.update(value={"text": "", "files": []}), chat_history + [[str(question), "*** ERR: Unable to process query. Query cannot be empty. ***"]], gr.update(show_label=False), gr.update(value=None)
     else:
         print("\n[Query] ────────────────────────────────────────────")
         print(f'[Query] Processing: "{question}"')
@@ -1822,12 +1832,33 @@ def _stream_predict(
                 actions.update(output)
                 node_name = next(iter(output.keys()), "")
                 stage_msg = stage_messages.get(node_name, "Working on getting you the best answer...")
-                yield gr.update(value={"text": "", "files": []}), chat_history + [[question, stage_msg]], gr.update(value=actions)
+                yield gr.update(value={"text": "", "files": []}), chat_history + [[question, stage_msg]], gr.update(value=actions), gr.update(value=None)
                 time.sleep(0.4)  # force Gradio to render each stage
                 for key, value in output.items():
                     final_value = value
             print("[Query] ✓ Response delivered to the chat window")
-            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, final_value["generation"]]], gr.update(show_label=False)
+            
+            # Save the report to disk BEFORE yielding to the UI
+            import datetime
+            import os
+            try:
+                os.makedirs("/project/output_local", exist_ok=True)
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                report_path = f"/project/output_local/Consulting_Report_{timestamp}.md"
+                with open(report_path, "w", encoding="utf-8") as rf:
+                    rf.write(final_value["generation"])
+                print(f"[Output] ✓ Report successfully saved to {report_path}")
+            except Exception as e:
+                print(f"[Output] ✗ Failed to save report: {e}")
+                report_path = None
+
+            # Create a temporary copy for Gradio to serve safely
+            import shutil
+            safe_path = f"/tmp/gradio/{timestamp}_Report.md"
+            os.makedirs("/tmp/gradio", exist_ok=True)
+            shutil.copy(report_path, safe_path)
+            
+            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, final_value["generation"]]], gr.update(show_label=False), gr.update(value=safe_path)
 
         except Exception as e:
             traceback.print_exc()
@@ -1835,7 +1866,7 @@ def _stream_predict(
             message = _get_query_error_message(e)
             print(f"[Query] ✗ Query failed ({type(e).__name__}) — an explanation was posted to the chat window")
 
-            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, message]], gr.update(show_label=False)
+            yield gr.update(value={"text": "", "files": []}), chat_history + [[question, message]], gr.update(show_label=False), gr.update(value=None)
 
 
 _support_matrix_cache = None
