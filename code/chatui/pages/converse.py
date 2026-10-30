@@ -344,7 +344,7 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
     model_list = fetch_ngc_models()
         # V1.7: Filter reasoning models out of Router/Grader dropdowns
     model_list_non_reasoning = [m for m in model_list if not is_reasoning_model(m)]
-    with gr.Blocks(title=TITLE, theme=kui_theme, css=kui_styles + _LOCAL_CSS) as page:
+    with gr.Blocks(title="Agentic RAG: Enterprise Consultant", css=open("/project/code/chatui/static/style.css").read()) as page:
         gr.Markdown(f"# {TITLE}")
 
         """ Keep state of which queries need to use NIMs vs API Endpoints. """

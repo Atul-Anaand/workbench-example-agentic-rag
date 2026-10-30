@@ -561,5 +561,5 @@ def get_retriever():
         embedding_function=OllamaEmbeddings(model=EMBEDDINGS_MODEL),
         persist_directory="/project/data",
     )
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 25})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
     return retriever
