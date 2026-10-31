@@ -23,3 +23,10 @@ starlette==0.38.6
 huggingface_hub==0.29.3
 faster-whisper==1.2.1
 nvidia-cublas-cu12
+
+# Enterprise Data Analysis Dependencies
+duckdb
+tabulate
+pandas
+matplotlib
+openpyxl

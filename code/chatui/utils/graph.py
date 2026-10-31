@@ -246,6 +246,7 @@ def generate(state):
                                gpu_count=state["nim_generator_gpu_count"] if "nim_generator_gpu_count" in state else None,
                                temperature=0.7) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0.7).bind(**_thinking_off_kwargs(state["generator_model_id"]))
     rag_chain = prompt | llm | StrOutputParser()
+        # Since Pandas Agent returns a Document, we just format the documents
     context_with_sources = format_context_with_sources(documents)
     generation = rag_chain.bind(max_tokens=2048).invoke({"context": context_with_sources, "question": question})
     print(f"[Generator] ✓ Draft answer generated ({len(generation)} characters)")
@@ -360,6 +361,152 @@ def web_search(state):
 ### Conditional edge
 
 
+
+import io
+import contextlib
+import traceback
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+def duckdb_agent(state):
+    import glob
+    import duckdb
+    import pandas as pd
+    from langchain_core.documents import Document
+    
+    question = state["question"]
+    clean_question = question.split("=== STRICT INSTRUCTIONS ===")[0].strip()
+    file_paths = glob.glob("/project/uploads/*.xlsx") + glob.glob("/project/uploads/*.csv")
+    print("[DuckDB Agent] Found", len(file_paths), "files.")
+
+    if not file_paths:
+        return {"documents": [Document(page_content="Error: No files found.", metadata={"source": "duckdb_engine"})]}
+
+    NL = chr(10)
+
+    def read_sheet_merged(path, sheet_name):
+        raw = pd.read_excel(path, sheet_name=sheet_name, header=None)
+        if raw.empty or len(raw) < 2:
+            return raw
+        row0 = [str(x).strip().lower() if pd.notna(x) else "" for x in raw.iloc[0]]
+        row1 = [str(x).strip().lower() if pd.notna(x) else "" for x in raw.iloc[1]]
+        sub_terms = ['line', 'qty', 'value', 'quantity', 'amount', 'pcs', 'no.']
+        has_sub_header = any(any(t in cell for t in sub_terms) for cell in row1 if cell)
+        
+        if has_sub_header:
+            merged = []
+            last_group = ""
+            for i in range(len(row0)):
+                group = row0[i] if row0[i] else last_group
+                if row0[i]:
+                    last_group = row0[i]
+                sub = row1[i] if i < len(row1) else ""
+                if group and sub:
+                    merged.append(group + "_" + sub)
+                elif group:
+                    merged.append(group)
+                elif sub:
+                    merged.append(sub)
+                else:
+                    merged.append("col_" + str(i))
+            df = raw.iloc[2:].copy()
+            df.columns = merged
+        else:
+            merged = [row0[i] if row0[i] else "col_" + str(i) for i in range(len(row0))]
+            df = raw.iloc[1:].copy()
+            df.columns = merged
+            
+        df.columns = [str(c).replace(' ', '_').replace('-', '_').replace('/', '_').replace('.', '_').replace('#', '') for c in df.columns]
+        return df
+
+    try:
+        con = duckdb.connect(database=':memory:')
+        schema_lines = []
+        
+        for i, path in enumerate(file_paths):
+            filename = path.split('/')[-1]
+            sheets = pd.read_excel(path, sheet_name=None)
+            for sheet_name in sheets.keys():
+                try:
+                    df = read_sheet_merged(path, sheet_name)
+                except Exception as e:
+                    print("[DuckDB Agent] Sheet skip:", sheet_name, e)
+                    continue
+                safe_sheet = str(sheet_name).replace(' ', '_').replace('-', '_')
+                table_name = "file_" + str(i) + "_" + safe_sheet
+                con.register(table_name, df)
+                desc = con.execute("DESCRIBE " + table_name).fetchall()
+                schema_lines.append("Table: " + table_name + " (Source: " + filename + " | Sheet: " + str(sheet_name) + ")")
+                for row in desc:
+                    schema_lines.append("  - " + str(row[0]) + " (" + str(row[1]) + ")")
+                schema_lines.append("")
+
+        schema_str = NL.join(schema_lines)
+        print("[DuckDB Agent] Real Schema Found:")
+        print(schema_str)
+
+        base_prompt = "You are an expert SQL analyst." + NL + \
+                      "Schema:" + NL + "{schema}" + NL + NL + \
+                      "Question: {question}" + NL + NL + \
+                      "Write a DuckDB SQL query to answer this." + NL + \
+                      "- Use CAST(col AS DECIMAL(18,2)) for money columns." + NL + \
+                      "- ALWAYS use GROUP BY for non-aggregated columns." + NL + \
+                      "- ONLY output the SQL query. No markdown, no backticks." + NL + NL + \
+                      "{error_message}"
+
+        llm = nim.CustomChatOpenAI(custom_endpoint=state["nim_generator_ip"],
+                                   port=state["nim_generator_port"] if len(state["nim_generator_port"]) > 0 else "8000",
+                                   model_name=state["nim_generator_id"] if len(state["nim_generator_id"]) > 0 else "meta/llama-3.1-8b-instruct",
+                                   temperature=0) if state["generator_use_nim"] else ChatNVIDIA(model=state["generator_model_id"], temperature=0).bind(**_thinking_off_kwargs(state["generator_model_id"]))
+        
+        code_chain = PromptTemplate(template=base_prompt, input_variables=["schema", "question", "error_message"]) | llm | StrOutputParser()
+        
+        print("[DuckDB Agent] Generating SQL (Attempt 1)...")
+        sql_query = code_chain.invoke({"schema": schema_str, "question": clean_question, "error_message": ""})
+        sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+        
+        print("[DuckDB Agent] Attempt 1 SQL:")
+        print(sql_query)
+        
+        if not sql_query:
+            raise ValueError("LLM generated empty SQL.")
+
+        try:
+            result = con.execute(sql_query)
+            if result is None:
+                raise ValueError("DuckDB returned None. The query might not be a valid SELECT.")
+            result_df = result.fetchdf()
+        except Exception as sql_error:
+            print("[DuckDB Agent] SQL Failed. Retrying with error context...")
+            print("Error:", str(sql_error))
+            
+            sql_query = code_chain.invoke({
+                "schema": schema_str, 
+                "question": clean_question, 
+                "error_message": "Your previous query failed with this error: " + str(sql_error) + ". Fix it."
+            })
+            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            
+            print("[DuckDB Agent] Attempt 2 SQL:")
+            print(sql_query)
+            
+            if not sql_query:
+                raise ValueError("LLM generated empty SQL on retry.")
+                
+            result = con.execute(sql_query)
+            if result is None:
+                raise ValueError("DuckDB returned None on retry.")
+            result_df = result.fetchdf()
+
+        result_str = result_df.to_markdown(index=False)
+        print("[DuckDB Agent] Execution successful. Rows:", len(result_df))
+
+        return {"documents": [Document(page_content="=== EXACT DATA ANALYSIS RESULTS ===" + NL + result_str, metadata={"source": "duckdb_engine"})]}
+
+    except Exception as e:
+        import traceback
+        error_msg = "DuckDB execution failed: " + str(e) + NL + traceback.format_exc()
+        print("[DuckDB Agent] ERROR:", error_msg)
+        return {"documents": [Document(page_content="=== EXACT DATA ANALYSIS RESULTS ===" + NL + "Error: " + error_msg, metadata={"source": "duckdb_engine"})]}
 def route_question(state):
     """
     Route question to web search or RAG.
@@ -441,3 +588,4 @@ def grade_generation_v_documents_and_question(state):
     question = state["question"]
     documents = state["documents"]
     generation = state["generation"]
+    return "useful"

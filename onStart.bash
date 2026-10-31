@@ -25,4 +25,11 @@ else
     echo "[onStart] cublas lib already present"
 fi
 
+
+# Ensure data analysis tools are present (safety net)
+if ! python3 -c "import duckdb" 2>/dev/null; then
+    echo "[onStart] Data tools missing — installing..."
+    pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple duckdb tabulate pandas matplotlib openpyxl
+fi
+
 echo "[onStart] environment ready"

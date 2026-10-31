@@ -52,6 +52,7 @@ RECURSION_LIMIT = int(os.getenv("RECURSION_LIMIT", DEFAULT_RECURSION_LIMIT))
 
 
 # Local Ollama inference configuration.
+_UPLOADED_FILES = []
 LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "true").lower() in {
     "1", "true", "yes", "on"
 }
@@ -1187,7 +1188,32 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             progress(0.25, desc="Initializing Task")
             time.sleep(0.75)
             progress(0.5, desc="Uploading Docs")
-            database.upload_files(files)
+            
+            import shutil
+            import os
+            
+            # Engineering Standard: Copy uploads to a deterministic landing zone
+            os.makedirs("/project/uploads", exist_ok=True)
+            for old_file in os.listdir("/project/uploads"):
+                os.remove(os.path.join("/project/uploads", old_file))
+                
+            for f in files:
+                src_path = getattr(f, 'path', getattr(f, 'name', str(f)))
+                if os.path.exists(src_path):
+                    filename = os.path.basename(src_path)
+                    dest_path = os.path.join("/project/uploads", filename)
+                    shutil.copy(src_path, dest_path)
+                    print(f"[Documents] Copied {filename} to /project/uploads/")
+
+            # Only ingest non-prompt files into Chroma
+            files_to_ingest = []
+            for f in files:
+                name = f.get('orig_name', '').lower() if isinstance(f, dict) else str(f).lower()
+                if not name.endswith(('.md', '.txt')):
+                    files_to_ingest.append(f)
+            
+            if files_to_ingest:
+                database.upload_files(files_to_ingest)
             progress(0.75, desc="Cleaning Up")
             time.sleep(0.75)
             return {
@@ -1225,6 +1251,8 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
             progress(0.25, desc="Initializing Task")
             time.sleep(0.75)
             progress(0.5, desc="Clearing Context")
+            global _UPLOADED_FILES
+            _UPLOADED_FILES = []
             database._clear()
             progress(0.75, desc="Cleaning Up")
             time.sleep(0.75)
@@ -1779,7 +1807,8 @@ def _stream_predict(
     chat_history: List[Tuple[str, str]],
 ) -> Any:
 
-    inputs = {"question": question, 
+    global _UPLOADED_FILES
+    inputs = {"question": question, "file_paths": _UPLOADED_FILES, 
               "generator_model_id": model_generator, 
               "router_model_id": model_router, 
               "retrieval_model_id": model_retrieval, 

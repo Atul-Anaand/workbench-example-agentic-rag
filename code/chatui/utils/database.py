@@ -556,3 +556,18 @@ def get_retriever():
     )
     retriever = vectorstore.as_retriever(search_kwargs={"k": 15})
     return retriever
+
+
+def get_ingested_excel_paths():
+    """Fallback to retrieve Excel file paths directly from ChromaDB."""
+    try:
+        vs = Chroma(collection_name="rag-chroma", embedding_function=OllamaEmbeddings(), persist_directory="/project/data")
+        data = vs.get()
+        paths = set()
+        for meta in data.get("metadatas", []):
+            src = meta.get("source", "")
+            if src.lower().endswith(('.xlsx', '.xls', '.csv')):
+                paths.add(src)
+        return list(paths)
+    except Exception:
+        return []

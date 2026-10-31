@@ -23,16 +23,27 @@ def compile_graph():
     
     # Define the nodes
     workflow.add_node("websearch", graph.web_search)  # web search
-    workflow.add_node("retrieve", graph.retrieve)  # retrieve
+    workflow.add_node("retrieve", graph.retrieve)
+    workflow.add_node("duckdb_agent", graph.duckdb_agent)  # retrieve
     workflow.add_node("grade_documents", graph.grade_documents)  # grade documents
     workflow.add_node("generate", graph.generate)  # generate
 
     # Build graph
+    def is_excel_route(state):
+        import glob
+        # Engineering Standard: Check the deterministic folder instead of UI state
+        excel_files = glob.glob("/project/uploads/*.xlsx") + glob.glob("/project/uploads/*.csv")
+        if excel_files:
+            print(f"[Router] → Detected {len(excel_files)} Excel files in landing zone. Routing to DuckDB Agent.")
+            return "duckdb_agent"
+        return graph.route_question(state)
+
     workflow.set_conditional_entry_point(
-        graph.route_question,
+        is_excel_route,
         {
             "websearch": "websearch",
             "vectorstore": "retrieve",
+            "duckdb_agent": "duckdb_agent",
         },
     )
     
@@ -46,6 +57,7 @@ def compile_graph():
         },
     )
     workflow.add_edge("websearch", "generate")
+    workflow.add_edge("duckdb_agent", "generate")
     workflow.add_conditional_edges(
         "generate",
         graph.grade_generation_v_documents_and_question,
