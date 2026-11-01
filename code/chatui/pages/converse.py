@@ -1877,6 +1877,66 @@ def _stream_predict(
                 with open(report_path, "w", encoding="utf-8") as rf:
                     rf.write(final_value["generation"])
                 print(f"[Output] ✓ Report successfully saved to {report_path}")
+                
+                # --- PDF EXPORT ENGINE (Base64 Safe) ---
+                try:
+                    import markdown
+                    from xhtml2pdf import pisa
+                    import os
+                    import base64
+                    
+                    pdf_filename = report_path.split("/")[-1].replace(".md", ".pdf")
+                    pdf_path = f"/output_local/{pdf_filename}"
+                    tmp_pdf = f"/tmp/{pdf_filename}"
+                    
+                    html_body = markdown.markdown(final_value["generation"])
+                    html_wrapper = f"""
+                    <html>
+                    <head>
+                    <style>
+                        @page {{ margin: 2cm; }}
+                        body {{ font-family: Helvetica, sans-serif; font-size: 11pt; line-height: 1.6; color: #333; }}
+                        h1, h2, h3 {{ color: #1a365d; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                        th, td {{ border: 1px solid #cbd5e1; padding: 8px; text-align: left; }}
+                        th {{ background-color: #f1f5f9; }}
+                        .chart-container {{ text-align: center; margin-top: 20px; page-break-inside: avoid; }}
+                    </style>
+                    </head>
+                    <body>
+                        {html_body}
+                    """
+                    
+                    chart_path = None
+                    for doc in final_value.get("documents", []):
+                        if doc.metadata.get("chart_path"):
+                            chart_path = doc.metadata["chart_path"]
+                            break
+                            
+                    if chart_path and os.path.exists(chart_path):
+                        try:
+                            with open(chart_path, "rb") as img_file:
+                                b64_str = base64.b64encode(img_file.read()).decode("utf-8")
+                            html_wrapper += f'<div class="chart-container"><img src="data:image/png;base64,{b64_str}" style="width:100%; max-width:600px;"></div>'
+                            print(f"[Output] ✓ Chart embedded in PDF as Base64")
+                        except Exception as img_err:
+                            print(f"[Output] ⚠ Could not embed chart: {img_err}")
+                        
+                    html_wrapper += "</body></html>"
+                    
+                    # Write to /tmp first, then copy to G: drive
+                    with open(tmp_pdf, "wb") as pdf_file:
+                        pisa_status = pisa.CreatePDF(html_wrapper, dest=pdf_file)
+                        
+                    if not pisa_status.err:
+                        import shutil
+                        shutil.copy(tmp_pdf, pdf_path)
+                        print(f"[Output] ✓ PDF successfully saved to {pdf_path}")
+                    else:
+                        print(f"[Output] ⚠ PDF generation error: {pisa_status.err}")
+                except Exception as pdf_err:
+                    print(f"[Output] ⚠ PDF generation skipped: {pdf_err}")
+                    
             except Exception as e:
                 print(f"[Output] ✗ Failed to save report: {e}")
                 report_path = None

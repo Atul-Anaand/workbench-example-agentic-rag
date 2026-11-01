@@ -30,3 +30,8 @@ tabulate
 pandas
 matplotlib
 openpyxl
+
+# Visuals & PDF Export
+seaborn
+xhtml2pdf
+markdown

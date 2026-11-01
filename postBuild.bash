@@ -9,3 +9,6 @@ pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple gradio==4.44.1 fa
 pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple faster-whisper==1.2.1 nvidia-cublas-cu12
 
 pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple duckdb tabulate pandas matplotlib openpyxl
+
+pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple seaborn xhtml2pdf
+pip install --user -i https://pypi.tuna.tsinghua.edu.cn/simple markdown

@@ -449,6 +449,9 @@ def duckdb_agent(state):
                       "Question: {question}" + NL + NL + \
                       "Write a DuckDB SQL query to answer this." + NL + \
                       "- Use CAST(col AS DECIMAL(18,2)) for money columns." + NL + \
+                      "- WARNING: The date column might contain text like 'OPENING'. Always use TRY_CAST(date AS DATE) instead of CAST to avoid crashing. Filter out nulls with WHERE TRY_CAST(date AS DATE) IS NOT NULL if grouping by date." + NL + \
+                      "- HINT: The table names already contain the month (e.g., file_0_AUGUST_2026). Just hardcode the month name (e.g., SELECT 'August' AS month) instead of trying to extract it from the date column." + NL + \
+                      "- IMPORTANT: If the schema contains a 'month', 'date', or category column, you MUST use GROUP BY to provide a breakdown (e.g., by month). We need this for charting." + NL + \
                       "- ALWAYS use GROUP BY for non-aggregated columns." + NL + \
                       "- ONLY output the SQL query. No markdown, no backticks." + NL + NL + \
                       "{error_message}"
@@ -468,7 +471,17 @@ def duckdb_agent(state):
         print(sql_query)
         
         if not sql_query:
-            raise ValueError("LLM generated empty SQL.")
+            print("[DuckDB Agent] Attempt 1 returned empty SQL. Retrying...")
+            sql_query = code_chain.invoke({
+                "schema": schema_str, 
+                "question": clean_question, 
+                "error_message": "You must output a valid SELECT statement. Your previous response was empty."
+            })
+            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            print("[DuckDB Agent] Attempt 2 SQL:")
+            print(sql_query)
+            if not sql_query:
+                raise ValueError("LLM generated empty SQL twice.")
 
         try:
             result = con.execute(sql_query)
@@ -500,7 +513,46 @@ def duckdb_agent(state):
         result_str = result_df.to_markdown(index=False)
         print("[DuckDB Agent] Execution successful. Rows:", len(result_df))
 
-        return {"documents": [Document(page_content="=== EXACT DATA ANALYSIS RESULTS ===" + NL + result_str, metadata={"source": "duckdb_engine"})]}
+        # --- VISUALS ENGINE: Generate Seaborn Chart ---
+        chart_path = ""
+        print("[DuckDB Agent] Chart check: rows=", len(result_df), "cols=", len(result_df.columns))
+        if len(result_df) > 0:
+            try:
+                import matplotlib
+                matplotlib.use('Agg') # Headless rendering
+                import seaborn as sns
+                import matplotlib.pyplot as plt
+                import datetime
+                import os
+                
+                plt.figure(figsize=(10, 6))
+                sns.set_theme(style="whitegrid")
+                
+                if len(result_df.columns) == 1:
+                    # Single value: plot as single bar
+                    plt.bar(["Total"], result_df.iloc[:, 0].values, color="#2563eb")
+                    plt.title(result_df.columns[0], fontsize=16, fontweight='bold')
+                else:
+                    x_col = result_df.columns[0]
+                    y_col = result_df.columns[1]
+                    if "date" in str(x_col).lower() or "month" in str(x_col).lower():
+                        sns.lineplot(data=result_df, x=x_col, y=y_col, marker="o", color="#2563eb")
+                    else:
+                        sns.barplot(data=result_df, x=x_col, y=y_col, palette="Blues_d")
+                
+                plt.title("Quantitative Analysis", fontsize=16, fontweight='bold', color='#1e293b')
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                chart_path = f"/output_local/Chart_{ts}.png"
+                plt.savefig(chart_path)
+                plt.close()
+                print("[DuckDB Agent] ✓ Chart successfully saved to:", chart_path)
+            except Exception as chart_err:
+                print("[DuckDB Agent] ⚠ Chart generation skipped:", chart_err)
+
+        return {"documents": [Document(page_content="=== EXACT DATA ANALYSIS RESULTS ===" + NL + result_str, metadata={"source": "duckdb_engine", "chart_path": chart_path})]}
 
     except Exception as e:
         import traceback

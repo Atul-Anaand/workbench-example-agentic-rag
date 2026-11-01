@@ -1,14 +1,10 @@
 #!/bin/bash
-# This file contains bash commands that will be executed at the beginning of the container build process,
-# before any system packages or programming language specific package have been installed.
-#
+# This file contains bash commands that will be executed at the beginning of the container build process.
 # Note: This file may be removed if you don't need to use it
+
 pip install --upgrade pip
 
-# Write pip.conf so all pip installs (including the one from requirements.txt)
-# use the Tsinghua mirror. We do this in a config file rather than in
-# requirements.txt because Workbench's wb-svc daemon strips the space
-# after "--" options in requirements.txt, breaking "--index-url https://..."
+# Write pip config so pip installs use the Tsinghua mirror.
 mkdir -p "$HOME/.config/pip"
 cat > "$HOME/.config/pip/pip.conf" << 'PIPCONF'
 [global]
@@ -18,4 +14,8 @@ timeout = 120
 retries = 15
 resume-retries = 30
 PIPCONF
-echo "pip.conf written to $HOME/.config/pip/pip.conf"
+
+# ENTERPRISE OPTIMIZATION: Force CPU-only PyTorch 
+# This prevents pip from downloading 3.5GB of unnecessary nvidia-cuda packages
+# because inference is handled by Ollama on the host.
+pip install --user torch --index-url https://download.pytorch.org/whl/cpu
