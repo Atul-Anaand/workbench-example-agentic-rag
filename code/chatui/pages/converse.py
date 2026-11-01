@@ -1489,7 +1489,6 @@ def build_page(client: chat_client.ChatClient) -> gr.Blocks:
                 for p in doc_paths:
                     print(f"[Documents]   - {p}")
 
-                yield (gr.update(value={"text": "", "files": []}),
                        chat_history + [[text or "[Document uploaded]", "Ingesting document(s) into context..."]],
                        gr.update(show_label=False), gr.update(value=None))
 
